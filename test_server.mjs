@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { callNvidia, cleanModelJson, createAppServer, normalizeAnalysis, NVIDIA_MODEL } from './server.mjs';
+import { callOpenRouter, cleanModelJson, createAppServer, getOpenRouterApiKey, normalizeAnalysis, VISION_MODEL, TEXT_MODEL } from './server.mjs';
 
 const input = {
   artwork: { title: 'Annunciazione', artist: 'Beato Angelico', period: 'Rinascimento fiorentino' },
@@ -10,6 +10,12 @@ const input = {
   sources: [{ title: 'Museo', url: 'https://example.org', type: 'Museo' }],
   learningLevel: 'Scuola secondaria'
 };
+
+test('getOpenRouterApiKey accepts supported environment variable names', () => {
+  assert.equal(getOpenRouterApiKey({ OPENROUTER_API_KEY: ' nim-key ' }), 'nim-key');
+  assert.equal(getOpenRouterApiKey({ OPENROUTER_API_KEY: 'primary', NGC_API_KEY: 'fallback' }), 'primary');
+  assert.equal(getOpenRouterApiKey({}), '');
+});
 
 test('cleanModelJson parses fenced JSON', () => {
   assert.deepEqual(cleanModelJson('```json\n{"observation":"Un angelo"}\n```'), { observation: 'Un angelo' });
@@ -23,23 +29,31 @@ test('normalizeAnalysis keeps sections, source and hotspot title', () => {
   assert.equal(result.sources[0].title, 'Museo');
 });
 
-test('callNvidia builds a multimodal NVIDIA request', async () => {
-  const previous = process.env.NVIDIA_API_KEY;
-  process.env.NVIDIA_API_KEY = 'test-key';
+test('callOpenRouter builds a multimodal NVIDIA request', async () => {
+  const previous = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = 'test-key';
   let request;
+  const requests = [];
   const fakeFetch = async (_url, options) => {
     request = options;
-    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ observation: 'Un angelo', importance: 'Messaggero', composition: 'Equilibrio', curiosity: 'Curiosità', connection: 'Rinascimento', confidence: { level: 'high', label: 'Ben supportata' } }) } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    requests.push(options);
+    const model = JSON.parse(options.body).model;
+    const result = model === VISION_MODEL ? { observation: 'Un angelo', visible_elements: ['figura'], colors: ['chiaro'], composition: 'Equilibrio', uncertainty: '' } : { observation: 'Un angelo', importance: 'Messaggero', composition: 'Equilibrio', curiosity: 'Curiosità', connection: 'Rinascimento', confidence: { level: 'high', label: 'Ben supportata' } };
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
-  const result = await callNvidia({ ...input, selectionImage: 'data:image/jpeg;base64,AA==' }, fakeFetch);
+  const result = await callOpenRouter({ ...input, selectionImage: 'data:image/jpeg;base64,AA==' }, fakeFetch);
   const body = JSON.parse(request.body);
-  assert.equal(body.model, NVIDIA_MODEL);
-  assert.equal(body.messages[0].content[1].type, 'image_url');
-  assert.equal(body.messages[0].content[3].type, 'image_url');
-  assert.match(body.messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/);
-  assert.equal(request.headers.Authorization, 'Bearer test-key');
+  assert.equal(body.model, TEXT_MODEL);
+  assert.equal(requests.length, 2);
+  assert.equal(JSON.parse(requests[0].body).model, VISION_MODEL);
+  assert.equal(body.messages[0].content[0].type, 'text');
   assert.equal(result.content.observation, 'Un angelo');
-  if (previous === undefined) delete process.env.NVIDIA_API_KEY; else process.env.NVIDIA_API_KEY = previous;
+  const visionBody = JSON.parse(requests[0].body);
+  assert.equal(visionBody.messages[0].content[1].type, 'image_url');
+  assert.equal(visionBody.messages[0].content[3].type, 'image_url');
+  assert.match(visionBody.messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/);
+  assert.equal(request.headers.Authorization, 'Bearer test-key');
+  if (previous === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previous;
 });
 
 test('static server serves the provided artwork and app', async () => {

@@ -11,7 +11,7 @@ App didattica React per esplorare l’**Annunciazione del Beato Angelico** attra
 - `server.py`: server statico e proxy server-side verso NVIDIA.
 - `test_server.py`: test automatici del proxy e del parsing della risposta.
 
-La chiave NVIDIA **non deve mai essere inserita in `index.html`, in `src/` o in un commit**.
+La chiave NVIDIA **non deve mai essere inserita in `index.html`, in `src/` o in un commit**. Il server riconosce `NVIDIA_API_KEY` e, come fallback, `NVIDIA_NIM_API_KEY` o `NGC_API_KEY`.
 
 ## Avvio locale
 
@@ -40,7 +40,7 @@ http://127.0.0.1:8000
 È possibile cambiare modello o porta senza modificare il codice:
 
 ```bash
-NVIDIA_MODEL="moonshotai/kimi-k2.6" APP_PORT=8000 node server.mjs
+NVIDIA_MODEL="nvidia/nemotron-3-ultra-550b-a55b" APP_PORT=8000 node server.mjs
 ```
 
 ## Modello scelto
@@ -48,7 +48,7 @@ NVIDIA_MODEL="moonshotai/kimi-k2.6" APP_PORT=8000 node server.mjs
 Il backend usa come default:
 
 ```text
-moonshotai/kimi-k2.6
+nvidia/nemotron-3-ultra-550b-a55b
 ```
 
 È un modello NVIDIA multimodale compatibile con il formato OpenAI Chat Completions e capace di ricevere testo più immagine. Il modello è sostituibile tramite `NVIDIA_MODEL` senza modificare il client React.
