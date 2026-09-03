@@ -54,7 +54,7 @@ function ExplorePage({ artwork, onBack }) {
         confidence: { label: 'Analisi non disponibile', tone: 'warm' },
         content: { observation: error.message, importance: '', composition: '', curiosity: '', connection: '' },
         sources: artwork.sources,
-        disclaimer: 'Controlla la configurazione del backend NVIDIA e riprova.'
+        disclaimer: 'Controlla la configurazione del backend OpenRouter e riprova.'
       });
     });
   }

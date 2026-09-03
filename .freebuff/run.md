@@ -4,7 +4,7 @@
 
 - No environment files or package dependencies are required.
 - Ensure Node.js 18+ is available.
-- If NVIDIA analysis is needed, configure `NVIDIA_API_KEY` in the process environment; never commit the key.
+- For AI analysis, copy `.env.example` to `.env.local` and fill in `OPENROUTER_API_KEY`. The server loads `.env.local` / `.env` automatically. Never commit the key.
 
 ## Run the server
 

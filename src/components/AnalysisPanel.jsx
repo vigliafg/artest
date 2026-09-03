@@ -39,7 +39,7 @@ function AnalysisPanel({ artwork, selection, analysis, loading, level, onLevelCh
         <div className="analysis-loading">
           <div className="loading-orbit"><span></span><span></span><span></span></div>
           <h3>Sto osservando il dettaglio…</h3>
-          <p>Collego ciò che vediamo al contesto dell’opera e alle fonti selezionate.</p>
+          <p>Collego ciò che vediamo al contesto dell’opera e a ciò che già conosco di essa.</p>
           <div className="loading-lines"><i></i><i></i><i></i></div>
         </div>
       )}
@@ -56,7 +56,7 @@ function AnalysisPanel({ artwork, selection, analysis, loading, level, onLevelCh
           </div>
           <div className="sources-block">
             <button className="sources-toggle" onClick={() => setSourcesOpen(!sourcesOpen)} aria-expanded={sourcesOpen}>
-              <span><Icon name="info" size={16} /> Fonti selezionate</span><Icon name="chevron" size={16} />
+              <span><Icon name="info" size={16} /> Fonti e riferimenti</span><Icon name="chevron" size={16} />
             </button>
             {sourcesOpen && <div className="sources-list">{analysis.sources.map(function (source) {
               return <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}<span>{source.type} <Icon name="external" size={13} /></span></a>;

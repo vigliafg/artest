@@ -39,6 +39,11 @@ class ServerTests(unittest.TestCase):
         result = server.clean_model_json('```json\n{"observation":"Volto"}\n```')
         self.assertEqual(result["observation"], "Volto")
 
+    def test_clean_model_json_repairs_double_escaped_json(self):
+        raw = 'Ecco: {\\"observation\\":\\"Volto\\"}'
+        result = server.clean_model_json(raw)
+        self.assertEqual(result["observation"], "Volto")
+
     def test_normalize_analysis_preserves_structured_content(self):
         result = server.normalize_analysis({
             "observation": "Un angelo inginocchiato.",
@@ -58,27 +63,55 @@ class ServerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "OPENROUTER_API_KEY"):
                 server.call_openrouter(self.request_data)
 
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"})
+    def test_normalize_analysis_prepends_web_citations(self):
+        result = server.normalize_analysis(
+            {"observation": "Un angelo."},
+            self.request_data,
+            [{"title": "Wikipedia", "url": "https://example.org/wiki"}],
+        )
+        self.assertEqual(result["sources"][0]["title"], "Wikipedia")
+        self.assertEqual(result["sources"][0]["type"], "Web")
+        self.assertEqual(len(result["sources"]), 2)
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_WEB_SEARCH": "true"})
     @patch("server.urlopen")
     def test_call_openrouter_maps_openai_compatible_response(self, mocked_urlopen):
         mocked_urlopen.return_value = FakeResponse({
-            "choices": [{"message": {"content": json.dumps({
-                "observation": "Un angelo.",
-                "importance": "È il messaggero.",
-                "composition": "Bilancia la scena.",
-                "curiosity": "Una curiosità.",
-                "connection": "Un collegamento.",
-                "confidence": {"level": "high", "label": "Ben supportata"},
-            })}}]
+            "choices": [{"message": {
+                "content": json.dumps({
+                    "observation": "Un angelo.",
+                    "importance": "È il messaggero.",
+                    "composition": "Bilancia la scena.",
+                    "curiosity": "Una curiosità.",
+                    "connection": "Un collegamento.",
+                    "confidence": {"level": "high", "label": "Ben supportata"},
+                }),
+                "annotations": [{"type": "url_citation", "url_citation": {"title": "Museo del Prado", "url": "https://example.org/prado"}}],
+            }}]
         })
         with patch.object(server, "image_data_uri", return_value="data:image/jpeg;base64,AA=="):
             result = server.call_openrouter(self.request_data)
         self.assertEqual(result["content"]["observation"], "Un angelo.")
+        self.assertEqual(result["sources"][0]["title"], "Museo del Prado")
+        self.assertEqual(result["sources"][0]["type"], "Web")
         request = mocked_urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["model"], server.TEXT_MODEL)
+        self.assertEqual(body["plugins"], [{"id": "web", "max_results": 5}])
         self.assertEqual(body["messages"][0]["content"][0]["type"], "text")
         self.assertEqual(request.headers["Authorization"], "Bearer test-key")
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_WEB_SEARCH": "false"})
+    @patch("server.urlopen")
+    def test_call_openrouter_omits_plugins_when_web_search_disabled(self, mocked_urlopen):
+        mocked_urlopen.return_value = FakeResponse({
+            "choices": [{"message": {"content": json.dumps({"observation": "Un angelo."})}}]
+        })
+        with patch.object(server, "image_data_uri", return_value="data:image/jpeg;base64,AA=="):
+            server.call_openrouter(self.request_data)
+        request = mocked_urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertNotIn("plugins", body)
 
 
 if __name__ == "__main__":

@@ -13,8 +13,11 @@ ROOT = Path(__file__).resolve().parent
 HOST = os.getenv("APP_HOST", "127.0.0.1")
 PORT = int(os.getenv("APP_PORT", "8000"))
 OPENROUTER_ENDPOINT = os.getenv("OPENROUTER_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions")
-VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "moonshotai/kimi-k2.6")
-TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
+VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "meta/muse-spark-1.3")
+TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "meta/muse-spark-1.3")
+def web_search_enabled(environ=None):
+    environ = os.environ if environ is None else environ
+    return environ.get("OPENROUTER_WEB_SEARCH", "").strip().lower() == "true"
 IMAGE_PATH = ROOT / "annunciazione-beato-angelico.jpg"
 MAX_BODY_BYTES = 2 * 1024 * 1024
 
@@ -52,12 +55,7 @@ def image_data_uri():
     return f"data:{mime};base64,{base64.b64encode(IMAGE_PATH.read_bytes()).decode('ascii')}"
 
 
-def clean_model_json(value):
-    if isinstance(value, dict):
-        return value
-    text = str(value or "").strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
+def try_parse_json(text):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -67,6 +65,23 @@ def clean_model_json(value):
                 return json.loads(match.group(0))
             except json.JSONDecodeError:
                 pass
+    return None
+
+
+def clean_model_json(value):
+    if isinstance(value, dict):
+        return value
+    text = str(value or "").strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    parsed = try_parse_json(text)
+    if parsed is not None:
+        return parsed
+    # Reasoning models sometimes double-escape the JSON inside a plain-text envelope.
+    unescaped = text.replace('\\"', '"').replace('\\\\', '\\')
+    repaired = try_parse_json(unescaped)
+    if repaired is not None:
+        return repaired
     return {"observation": text}
 
 
@@ -79,7 +94,26 @@ def get_text(response):
     return content
 
 
-def normalize_analysis(raw, request_data):
+def get_citations(response):
+    choices = response.get("choices") or []
+    message = (choices[0].get("message") or {}) if choices else {}
+    citations = []
+    for annotation in message.get("annotations") or []:
+        if not isinstance(annotation, dict):
+            continue
+        inner = annotation.get("url_citation") if annotation.get("type") == "url_citation" else None
+        if isinstance(inner, dict) and inner.get("url"):
+            citations.append({"title": inner.get("title") or "", "url": inner["url"]})
+    return citations
+
+
+def normalize_analysis(raw, request_data, citations=None):
+    citations = citations or []
+    web_sources = [
+        {"title": str(c.get("title") or f"Fonte web {index + 1}"), "url": c["url"], "type": "Web"}
+        for index, c in enumerate(citations)
+        if isinstance(c, dict) and c.get("url")
+    ]
     selection = request_data.get("selection") or {}
     hotspot = request_data.get("hotspot") or {}
     sections = raw.get("content") if isinstance(raw, dict) and isinstance(raw.get("content"), dict) else raw
@@ -99,8 +133,8 @@ def normalize_analysis(raw, request_data):
         "title": hotspot.get("title") or "Area selezionata",
         "confidence": {"level": level, "label": str(confidence.get("label", "Osservazione ben supportata" if level == "high" else "Interpretazione probabile")), "tone": "cool" if level == "high" else "warm"},
         "content": {key: str(sections.get(key) or fallback[key]).strip() for key in fallback},
-        "sources": request_data.get("sources") or [],
-        "disclaimer": "La risposta è generata da due modelli tramite OpenRouter: uno per l’osservazione visiva e uno per la spiegazione educativa.",
+        "sources": web_sources + (request_data.get("sources") or []),
+        "disclaimer": "La risposta è generata tramite OpenRouter: il modello osserva il dettaglio e integra i fatti sull’opera che conosce dal proprio addestramento.",
     }
 
 
@@ -115,15 +149,19 @@ def build_vision_prompt(data):
 def build_text_prompt(data, vision):
     artwork = data.get("artwork") or {}
     hotspot = data.get("hotspot") or {}
-    return f"Scrivi una spiegazione didattica in italiano per {data.get('learningLevel', 'Scuola secondaria')} usando esclusivamente questa osservazione visiva: {json.dumps(vision, ensure_ascii=False)}. Opera: {artwork.get('title', '')}; artista: {artwork.get('artist', '')}; dettaglio: {hotspot.get('title', 'area selezionata')}. Restituisci esclusivamente JSON valido con observation, importance, composition, curiosity, connection e confidence {{level,label}}. Non inventare informazioni."
+    return f"Sei un educatore d’arte italiano. Cerca nella tua memoria di addestramento tutti i fatti che conosci su quest’opera e su ogni suo elemento: titolo, artista, data, periodo, tecnica, luogo di conservazione, contesto storico-artistico, iconografia e significati. Ricorda anche ciò che sai sul dettaglio selezionato ({hotspot.get('title', 'area selezionata')}) e su ogni figura, oggetto o elemento che lo compone. Opera: {artwork.get('title', '')}; artista: {artwork.get('artist', '')}; periodo: {artwork.get('period', '')}; data: {artwork.get('date', '')}; tecnica: {artwork.get('technique', '')}. Osservazione visiva del dettaglio: {json.dumps(vision, ensure_ascii=False)}. Scrivi una spiegazione didattica per {data.get('learningLevel', 'Scuola secondaria')} che integri l’osservazione visiva del dettaglio con i fatti che già conosci sull’opera, distinguendo ciò che è visibile da ciò che è ricostruito dalla conoscenza. Restituisci esclusivamente JSON valido con observation, importance, composition, curiosity, connection e confidence {{level,label}}. Non inventare nulla: usa solo fatti di cui sei ragionevolmente certo e, in caso di dubbio, indica una confidenza più bassa."
 
 
 def call_model(model, content, api_key):
-    body = json.dumps({"model": model, "messages": [{"role": "user", "content": content}], "temperature": 0.2, "top_p": 0.7, "max_tokens": 500, "stream": False}).encode("utf-8")
+    payload = {"model": model, "messages": [{"role": "user", "content": content}], "temperature": 0.2, "top_p": 0.7, "max_tokens": 4000, "stream": False}
+    if web_search_enabled():
+        payload["plugins"] = [{"id": "web", "max_results": 5}]
+    body = json.dumps(payload).encode("utf-8")
     request = Request(OPENROUTER_ENDPOINT, data=body, method="POST", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json", "HTTP-Referer": "http://127.0.0.1:8000", "X-Title": "Leggi l Opera d Arte"})
     try:
-        with urlopen(request, timeout=45) as response:
-            return clean_model_json(get_text(json.loads(response.read().decode("utf-8"))))
+        with urlopen(request, timeout=60) as response:
+            raw = json.loads(response.read().decode("utf-8"))
+            return {"data": clean_model_json(get_text(raw)), "citations": get_citations(raw)}
     except HTTPError as exc:
         if exc.code in (401, 403):
             raise ValueError("La chiave OpenRouter non è valida o non è autorizzata") from exc
@@ -142,8 +180,8 @@ def call_openrouter(request_data):
     if request_data.get("selectionImage"):
         content.extend([{"type": "text", "text": "La seconda immagine è il crop esatto della regione selezionata."}, {"type": "image_url", "image_url": {"url": request_data["selectionImage"]}}])
     vision = call_model(VISION_MODEL, content, api_key)
-    explanation = call_model(TEXT_MODEL, [{"type": "text", "text": build_text_prompt(request_data, vision)}], api_key)
-    return normalize_analysis(explanation, request_data)
+    explanation = call_model(TEXT_MODEL, [{"type": "text", "text": build_text_prompt(request_data, vision["data"])}], api_key)
+    return normalize_analysis(explanation["data"], request_data, explanation["citations"])
 
 
 class AppHandler(SimpleHTTPRequestHandler):
