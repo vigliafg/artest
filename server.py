@@ -153,7 +153,7 @@ def build_text_prompt(data, vision):
 
 
 def call_model(model, content, api_key):
-    payload = {"model": model, "messages": [{"role": "user", "content": content}], "temperature": 0.2, "top_p": 0.7, "max_tokens": 4000, "stream": False}
+    payload = {"model": model, "messages": [{"role": "user", "content": content}], "temperature": 0.2, "top_p": 0.7, "max_tokens": 8000, "stream": False}
     if web_search_enabled():
         payload["plugins"] = [{"id": "web", "max_results": 5}]
     body = json.dumps(payload).encode("utf-8")

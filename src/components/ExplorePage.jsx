@@ -1,11 +1,12 @@
 function ExplorePage({ artwork, onBack }) {
   const [selectedHotspot, setSelectedHotspot] = React.useState(null);
   const [selection, setSelection] = React.useState(null);
-  const [analysis, setAnalysis] = React.useState(null);
+  const [analyses, setAnalyses] = React.useState({});
   const [loading, setLoading] = React.useState(false);
-  const [level, setLevel] = React.useState('Scuola secondaria');
   const [feedbacks, setFeedbacks] = React.useState([]);
   const requestId = React.useRef(0);
+
+  const LEVELS = ['Scuola secondaria', 'Approfondimento'];
 
   function createSelectionImage(nextSelection) {
     return new Promise(function (resolve) {
@@ -32,30 +33,38 @@ function ExplorePage({ artwork, onBack }) {
     });
   }
 
+  function buildErrorResult(error, hotspot) {
+    return {
+      id: 'error-' + Date.now(),
+      title: hotspot ? hotspot.title : 'Area selezionata',
+      confidence: { label: 'Analisi non disponibile', tone: 'warm' },
+      content: { observation: error.message, meaning: '', relation: '', curiosity: '', comparisons: '', openQuestions: '', lookAgain: '' },
+      sources: artwork.sources,
+      disclaimer: 'Controlla la configurazione del backend OpenRouter e riprova.'
+    };
+  }
+
+  // Lancio i due livelli in parallelo: una chiamata per "Scuola secondaria"
+  // e una per "Approfondimento", così entrambe le tab si popolano insieme.
   function runAnalysis(nextSelection, hotspot) {
     const currentRequestId = requestId.current + 1;
     requestId.current = currentRequestId;
     setSelectedHotspot(hotspot || null);
     setSelection({ ...nextSelection, hotspotTitle: hotspot ? hotspot.title : 'Area selezionata' });
-    setAnalysis(null);
+    setAnalyses({});
     setLoading(true);
     createSelectionImage(nextSelection).then(function (selectionImage) {
-      return window.AnalysisService.analyze(artwork, nextSelection, level, selectionImage);
-    }).then(function (result) {
+      return Promise.all(LEVELS.map(function (level) {
+        return window.AnalysisService.analyze(artwork, nextSelection, level, selectionImage)
+          .then(function (result) { return { level: level, result: result }; })
+          .catch(function (error) { return { level: level, result: buildErrorResult(error, hotspot) }; });
+      }));
+    }).then(function (entries) {
       if (currentRequestId !== requestId.current) return;
-      setAnalysis(result);
+      var byLevel = {};
+      entries.forEach(function (entry) { byLevel[entry.level] = entry.result; });
+      setAnalyses(byLevel);
       setLoading(false);
-    }).catch(function (error) {
-      if (currentRequestId !== requestId.current) return;
-      setLoading(false);
-      setAnalysis({
-        id: 'error-' + Date.now(),
-        title: hotspot ? hotspot.title : 'Area selezionata',
-        confidence: { label: 'Analisi non disponibile', tone: 'warm' },
-        content: { observation: error.message, importance: '', composition: '', curiosity: '', connection: '' },
-        sources: artwork.sources,
-        disclaimer: 'Controlla la configurazione del backend OpenRouter e riprova.'
-      });
     });
   }
 
@@ -71,11 +80,6 @@ function ExplorePage({ artwork, onBack }) {
     if (selection) runAnalysis(selection, selectedHotspot);
   }
 
-  function changeLevel(nextLevel) {
-    setLevel(nextLevel);
-    if (selection) runAnalysis(selection, selectedHotspot);
-  }
-
   function handleFeedback(result, value) {
     setFeedbacks(function (current) { return current.concat({ analysisId: result.id, value: value }); });
   }
@@ -88,9 +92,10 @@ function ExplorePage({ artwork, onBack }) {
         <button className="header-info" aria-label="Informazioni sull’esperienza"><Icon name="info" size={18} /></button>
       </header>
       <section className="explore-intro"><div><span className="eyebrow">{artwork.period}</span><h1>{artwork.title}</h1><p>{artwork.artist} <span>·</span> {artwork.date} <span>·</span> {artwork.institution}</p></div><div className="explore-tag"><Icon name="sparkle" size={15} /> Esplora i dettagli</div></section>
+      <ArtworkOverview artwork={artwork} />
       <section className="exploration-layout">
         <div className="viewer-column"><ArtworkViewer artwork={artwork} selectedHotspotId={selectedHotspot && selectedHotspot.id} onHotspotSelect={chooseHotspot} onFreeSelect={chooseFree} /><div className="rights-line">{artwork.rights}</div></div>
-        <AnalysisPanel artwork={artwork} selection={selection} analysis={analysis} loading={loading} level={level} onLevelChange={changeLevel} onRetry={retry} onFeedback={handleFeedback} />
+        <AnalysisPanel artwork={artwork} selection={selection} analyses={analyses} loading={loading} onRetry={retry} onFeedback={handleFeedback} onHotspotSelect={chooseHotspot} />
       </section>
     </main>
   );

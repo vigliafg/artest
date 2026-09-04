@@ -65,12 +65,21 @@ Può essere sostituito tramite `OPENROUTER_ENDPOINT` per usare un endpoint compa
 
 ## Flusso reale
 
-1. Il browser invia al backend opera, hotspot, coordinate e livello scolastico.
+### Presentazione in cima alla pagina (`POST /api/overview`)
+
+1. Aprendo la pagina dell’opera il browser chiede la presentazione storico-artistica di dipinto e artista.
+2. Il backend invia al modello testo un prompt con i metadati dell’opera e le fonti editoriali.
+3. Il modello risponde con JSON `{painting, artist}` (massimo 500 parole in totale).
+4. La presentazione è mostrata sopra il viewer e viene messa in cache per artwork.
+
+### Spiegazione del dettaglio (`POST /api/analyze`)
+
+1. Il browser invia al backend opera, hotspot, coordinate, livello scolastico ed elenco degli altri dettagli notevoli.
 2. Il backend legge l’immagine locale e la converte in data URI base64.
 3. Il backend invia immagine e prompt strutturato al modello visione tramite OpenRouter.
-4. Il backend passa l’osservazione visiva al modello testo per la spiegazione didattica.
+4. Il backend passa l’osservazione visiva al modello testo per la spiegazione didattica del solo dettaglio selezionato (senza ripetere il contesto generale, già mostrato in cima alla pagina).
 5. Il backend normalizza la risposta JSON del modello.
-6. Il browser visualizza osservazione, importanza, composizione, curiosità, collegamento, confidenza e fonti.
+6. Il browser visualizza le tre sezioni **Cosa vedi**, **Cosa significa**, **In relazione all’opera**, oltre a confidenza e fonti.
 
 L’immagine non viene inviata direttamente dal browser a OpenRouter e la chiave non viene esposta al client.
 
