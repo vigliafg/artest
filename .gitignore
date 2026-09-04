@@ -1,3 +1,10 @@
 .env
 .env.local
 __pycache__/
+
+# art-creator (runtime artifacts: DB SQLite + immagini caricate)
+art-creator/data/
+art-creator/uploads/
+
+# Freebuff preview server logs
+.freebuff/preview-*.log

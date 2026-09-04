@@ -221,10 +221,37 @@ ${example}
 Non inventare nulla: fonda il testo su ciò che è osservabile e su fatti di cui sei ragionevolmente certo; in caso di dubbio indica una confidenza più bassa.`;
 }
 
+// Rate limit globale: i modelli contributor di OpenRouter hanno 30 richieste/min.
+// Tutte le chiamate passano da qui -> semaforo a finestra scorrevole (default 26/min, sotto la soglia).
+// Consente di parallelizzare in sicurezza la generazione (art-creator) senza incappare nel 429.
+const OPENROUTER_RPM = Math.max(1, Number(process.env.OPENROUTER_RPM || 26));
+const callTimestamps = [];
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function acquireRateSlot() {
+  for (;;) {
+    const now = Date.now();
+    while (callTimestamps.length && callTimestamps[0] <= now - 60000) callTimestamps.shift();
+    if (callTimestamps.length < OPENROUTER_RPM) { callTimestamps.push(now); return; }
+    await sleep(Math.max(250, callTimestamps[0] + 60000 - now));
+  }
+}
+
 export async function callModel(model, content, apiKey, fetchImpl = globalThis.fetch) {
   const body = { model, messages: [{ role: 'user', content }], temperature: 0.2, top_p: 0.7, max_tokens: 8000, stream: false };
   if (webSearchEnabled()) body.plugins = [{ id: 'web', max_results: 5 }];
-  const response = await fetchImpl(OPENROUTER_ENDPOINT, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json', 'HTTP-Referer': 'http://127.0.0.1:8000', 'X-Title': 'Leggi l Opera d Arte' }, body: JSON.stringify(body) });
+  const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json', 'HTTP-Referer': 'http://127.0.0.1:8000', 'X-Title': 'Leggi l Opera d Arte' };
+  let response = null;
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await acquireRateSlot();
+    try {
+      response = await fetchImpl(OPENROUTER_ENDPOINT, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (response.status !== 429) break;
+      lastError = new Error('Limite temporaneo di OpenRouter raggiunto');
+    } catch (e) { lastError = e; }
+    if (attempt < 2) await sleep(2500 * (attempt + 1)); // backoff su 429 / errore di rete
+  }
+  if (!response) throw lastError || new Error('Errore di rete verso OpenRouter');
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) { if (response.status === 401 || response.status === 403) throw new Error('La chiave OpenRouter non è valida o non è autorizzata'); if (response.status === 429) throw new Error('Limite temporaneo di OpenRouter raggiunto'); throw new Error(`OpenRouter ha rifiutato la richiesta (${response.status})`); }
   const message = payload?.choices?.[0]?.message;

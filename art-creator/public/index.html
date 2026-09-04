@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>art-creator · crea le schede didattiche</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+:root{--ink:#17344a;--muted:#6b7a83;--paper:#f6f3ee;--white:#fffdf9;--line:#dedbd3;--coral:#dc7056;--mustard:#e2ac44;--green:#628f80;font-family:'DM Sans',Arial,sans-serif;color:var(--ink);background:var(--paper)}
+*{box-sizing:border-box}body{margin:0;background:var(--paper)}
+button,input,textarea,select{font:inherit}button{cursor:pointer}
+h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
+.app{max-width:1200px;margin:0 auto;padding:0 28px 70px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--line);margin-bottom:26px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-size:19px;font-weight:700}
+.brand-mark{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;gap:3px}
+.brand-mark i{display:block;width:6px;height:16px;border-radius:5px;transform:rotate(35deg);background:var(--coral)}
+.brand-mark i:nth-child(2){height:20px;background:var(--mustard)}
+.brand-mark i:nth-child(3){height:13px;background:var(--ink)}
+.topbar .right{display:flex;align-items:center;gap:14px}
+.eyebrow{color:var(--coral);text-transform:uppercase;font-weight:700;font-size:10px;letter-spacing:.16em}
+.page-title{font-size:38px;margin:8px 0 6px}
+.lead{color:var(--muted);font-size:13px;margin:0 0 26px;line-height:1.6;max-width:640px}
+.btn{border:0;border-radius:6px;padding:12px 18px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:var(--paper);color:var(--ink);border:1px solid var(--line)}
+.btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.btn.coral{background:var(--coral);color:#fff;border-color:var(--coral)}
+.btn.green{background:var(--green);color:#fff;border-color:var(--green)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.small{padding:8px 12px;font-size:11px;border-radius:5px}
+.card{background:var(--white);border:1px solid #e5e2dc;border-radius:14px;padding:22px;box-shadow:0 6px 20px rgba(30,42,44,.04)}
+.banner{background:#fdf1e8;border:1px solid #f0d5c3;border-radius:12px;padding:14px 18px;color:#8a5a3a;font-size:12px;margin-bottom:22px;display:flex;gap:10px;align-items:flex-start}
+.banner.ok{background:#eef6f1;border-color:#cfe5da;color:#47715f}
+.grid-artworks{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px}
+.aw-card{border:0;background:var(--white);border:1px solid #e5e2dc;border-radius:12px;overflow:hidden;text-align:left;padding:0;box-shadow:0 6px 18px rgba(30,42,44,.04)}
+.aw-card .thumb{height:170px;background:#eee9e1;overflow:hidden;position:relative}
+.aw-card .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.badge{position:absolute;top:10px;left:10px;background:var(--white);border-radius:20px;padding:5px 9px;font-size:9px;font-weight:700;color:var(--muted);text-transform:uppercase}
+.badge.ready{color:#47715f}
+.aw-card .body{padding:14px 16px}
+.aw-card .body h3{margin:0 0 4px;font-size:19px}
+.aw-card .body p{margin:0;color:var(--muted);font-size:11px}
+.aw-card .actions{display:flex;gap:8px;padding:0 16px 14px}
+.aw-card .actions .btn{flex:1;justify-content:center}
+/* ---------- workspace ---------- */
+.ws-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:22px;align-items:start}
+.dropzone{border:2px dashed var(--line);border-radius:14px;background:var(--white);padding:38px 24px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
+.dropzone:hover,.dropzone.over{border-color:var(--coral);background:#fff9f5}
+.dropzone .dz-icon{font-size:34px;margin-bottom:8px}
+.dropzone p{margin:4px 0;font-size:12px}
+.image-stage{position:relative;border:1px solid #e5e2dc;border-radius:12px;overflow:hidden;background:#eee9e1}
+.image-stage img{width:100%;display:block}
+.image-stage .region-overlay{position:absolute;border:2px solid var(--coral);background:rgba(220,112,86,.08);border-radius:2px;pointer-events:none}
+.image-stage .region-overlay span{position:absolute;top:-20px;left:0;background:var(--coral);color:#fff;font-size:9px;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.detail-list{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+.detail-item{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--white);cursor:pointer;transition:.15s}
+.detail-item:hover{border-color:var(--coral)}
+.detail-item.active{border-color:var(--coral);background:#fff9f5;box-shadow:inset 0 -2px 0 var(--coral)}
+.detail-item .n{color:var(--coral);font-weight:700;font-size:11px;margin-top:1px}
+.detail-item .d strong,.detail-item .d small{display:block}
+.detail-item .d strong{font-size:12px}
+.detail-item .d small{color:var(--muted);font-size:10px;margin-top:3px}
+.detail-item .st{margin-left:auto;font-size:9px;color:var(--green);white-space:nowrap;font-weight:700;text-transform:uppercase}
+/* ---------- forms ---------- */
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field label{display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.field input,.field textarea{width:100%;border:1px solid var(--line);border-radius:7px;background:var(--white);padding:9px 11px;font-size:12px;color:var(--ink)}
+.field textarea{min-height:78px;resize:vertical;line-height:1.5}
+/* ---------- contenuti ---------- */
+.content-tabs{display:flex;gap:8px;margin:14px 0 12px}
+.ctab{flex:1;border:1px solid var(--line);background:var(--white);border-radius:9px;padding:10px;text-align:center;font-size:11px;font-weight:700;color:var(--muted)}
+.ctab.active{border-color:var(--coral);color:var(--ink);background:#fff9f5;box-shadow:inset 0 -2px 0 var(--coral)}
+.section-block{border-top:1px solid var(--line);padding:11px 0}
+.section-block h4{font-family:'DM Sans';font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--coral);margin:0 0 6px}
+.section-block textarea{width:100%;border:1px solid var(--line);border-radius:7px;padding:9px 11px;font-size:12px;line-height:1.55;min-height:66px;resize:vertical;background:var(--white)}
+.section-block.look textarea{min-height:40px;background:var(--paper)}
+.step-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.step-note{color:var(--muted);font-size:11px;margin:6px 0 0}
+.progress{height:6px;background:#eeeae3;border-radius:4px;overflow:hidden;margin:14px 0 8px}
+.progress i{display:block;height:100%;background:var(--coral);border-radius:4px;transition:width .4s}
+.log-line{font-size:11px;color:var(--muted);padding:2px 0;display:flex;gap:8px;align-items:center}
+.log-line.done{color:#47715f}
+.log-line .dot{width:6px;height:6px;border-radius:50%;background:var(--mustard);flex-shrink:0}
+.log-line.done .dot{background:var(--green)}
+.spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* feedback salvataggio */
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:#1d5a43;color:#fff;padding:15px 24px;border-radius:30px;font-size:13px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 12px 34px rgba(0,0,0,.25);transition:.35s;z-index:50;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ---------- viewer ---------- */
+.viewer-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(360px,.75fr);gap:22px;align-items:start}
+.viewer-title h1{font-size:42px;margin:6px 0 6px}
+.viewer-title .meta{color:var(--muted);font-size:12px;margin:0}
+.ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.ov-col h4{font-family:'DM Sans';font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--coral);margin:0 0 8px}
+.ov-col p{font-size:12px;line-height:1.7;margin:0}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 0;border-bottom:1px solid var(--line)}
+.panel-head h3{font-size:22px;margin:0}
+.confidence{display:inline-flex;align-items:center;gap:6px;font-size:9px;font-weight:700;padding:6px 10px;border-radius:20px;background:#e6eef0;color:#47717c}
+.hotspot-chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.hchip{border:1px solid var(--line);background:var(--white);border-radius:30px;padding:8px 13px;font-size:11px;color:var(--ink)}
+.hchip.active{border-color:var(--coral);background:#fff9f5;color:var(--coral);font-weight:700}
+.sources a{display:block;color:var(--ink);text-decoration:none;font-size:11px;padding:3px 0}
+.sources span{color:var(--muted);font-size:9px}
+.muted-note{color:var(--muted);font-size:9px;line-height:1.5;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.empty-state{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty-state h2{color:var(--ink);font-size:26px}
+@media(max-width:900px){.ws-layout,.viewer-layout{grid-template-columns:1fr}.meta-grid,.ov-grid{grid-template-columns:1fr}.app{padding:0 14px 60px}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+'use strict';
+/* ================= stato ================= */
+var state = { view: 'home', artwork: null, list: [], busy: {}, log: [] };
+
+/* ================= api ================= */
+function api(path, opts) {
+  return fetch(path, opts || {}).then(function (res) {
+    return res.json().catch(function () { return {}; }).then(function (body) {
+      if (!res.ok) { var e = new Error((body.error && body.error.message) || ('HTTP ' + res.status)); e.status = res.status; e.body = body; throw e; }
+      return body;
+    });
+  });
+}
+function post(path, body) { return api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+function put(path, body) { return api(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+function patch(path, body) { return api(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+
+/* ================= util ================= */
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function toast(msg, ok) {
+  var el = document.getElementById('toast');
+  el.innerHTML = (ok ? '✓ ' : '⚠ ') + esc(msg);
+  el.classList.add('show');
+  setTimeout(function () { el.classList.remove('show'); }, 4000);
+}
+function sectionOf(tab) { return tab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions']; }
+function fieldLabel(key) {
+  return { observation: 'Cosa vedi', meaning: 'Cosa significa', relation: 'In relazione all’opera', curiosity: 'Una curiosità', comparisons: 'Confronti con altre opere', openQuestions: 'Questioni aperte', lookAgain: 'Guarda ancora' }[key] || key;
+}
+function cropDataUrl(imgEl, region, maxSide) {
+  return new Promise(function (resolve) {
+    if (!imgEl || !imgEl.naturalWidth || !region) return resolve(null);
+    var pad = 0.02;
+    var x = Math.max(0, region.x - pad), y = Math.max(0, region.y - pad);
+    var right = Math.min(1, region.x + region.width + pad), bottom = Math.min(1, region.y + region.height + pad);
+    var sw = Math.max(1, (right - x) * imgEl.naturalWidth);
+    var sh = Math.max(1, (bottom - y) * imgEl.naturalHeight);
+    var scale = Math.min(1, (maxSide || 900) / Math.max(sw, sh));
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw * scale));
+    c.height = Math.max(1, Math.round(sh * scale));
+    c.getContext('2d').drawImage(imgEl, x * imgEl.naturalWidth, y * imgEl.naturalHeight, sw, sh, 0, 0, c.width, c.height);
+    resolve(c.toDataURL('image/jpeg', 0.85));
+  });
+}
+function fileToDataUrl(file) {
+  return new Promise(function (resolve, reject) {
+    var r = new FileReader();
+    r.onload = function () { resolve(r.result); };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+var imgCache = {};
+function loadImage(src) {
+  return new Promise(function (resolve) {
+    if (imgCache[src]) return resolve(imgCache[src]);
+    var img = new Image();
+    img.onload = function () { imgCache[src] = img; resolve(img); };
+    img.onerror = function () { resolve(null); };
+    img.src = src;
+  });
+}
+
+/* ================= render ================= */
+var appEl = document.getElementById('app');
+
+function iconBtn(label, fn, extra) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn small' + (extra || '');
+  b.textContent = label;
+  b.onclick = fn;
+  return b;
+}
+
+function render() {
+  if (state.view === 'home') return renderHome();
+  if (state.view === 'studio') return renderStudio();
+  if (state.view === 'viewer') return renderViewer();
+}
+function topbar(title, rightHtml) {
+  return '<header class="topbar"><a class="brand" href="#" data-nav="home"><span class="brand-mark"><i></i><i></i><i></i></span>art-creator</a>' +
+    '<div class="right"><span class="eyebrow">' + esc(title || '') + '</span>' + (rightHtml || '') + '</div></header>';
+}
+
+/* ---------- home ---------- */
+function renderHome() {
+  var html = topbar('schede didattiche', '<button class="btn primary small" data-nav="new">+ Nuova opera</button>');
+  html += '<h1 class="page-title">Crea le schede didattiche</h1>';
+  html += '<p class="lead">Carica l’immagine di un dipinto: l’intelligenza artificiale propone la scheda dell’opera, i dettagli notevoli e tutte le sezioni didattiche. Tu controlli, correggi e salvi.</p>';
+  if (state.list.length === 0) {
+    html += '<div class="empty-state card"><h2>Nessuna opera nel database</h2><p>Inizia caricando l’immagine di un dipinto.</p><br><button class="btn primary" data-nav="new">+ Nuova opera</button></div>';
+  } else {
+    html += '<div class="grid-artworks">';
+    state.list.forEach(function (a) {
+      html += '<div class="aw-card"><div class="thumb"><span class="badge ' + (a.status === 'ready' ? 'ready' : '') + '">' + (a.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span>' +
+        (a.imageUrl ? '<img src="' + esc(a.imageUrl) + '" alt="" />' : '') + '</div>' +
+        '<div class="body"><h3>' + esc(a.title || 'Senza titolo') + '</h3><p>' + esc(a.artist || '') + (a.date ? ' · ' + esc(a.date) : '') + '</p></div>' +
+        '<div class="actions"><button class="btn small" data-open="' + esc(a.id) + '">Modifica</button>' +
+        (a.status === 'ready' ? '<button class="btn small primary" data-view="' + esc(a.id) + '">Vedi</button>' : '') +
+        '<button class="btn small ghost" data-del="' + esc(a.id) + '">Elimina</button></div></div>';
+    });
+    html += '</div>';
+  }
+  appEl.innerHTML = html;
+}
+
+/* ---------- studio (nuova opera + workspace) ---------- */
+function StudioView() {
+  this.artworkId = null;
+  this.imageUrl = null;
+  this.pendingFile = null;
+  this.details = [];
+  this.activeDetailId = null;
+  this.activeTab = 'studio';
+  this.genBusy = false;
+  this.meta = { title: '', artist: '', date: '', period: '', technique: '', institution: '', location: '' };
+}
+var studio = null;
+
+function renderStudio() {
+  if (!studio) { studio = new StudioView(); }
+  var s = studio;
+  var html = topbar(s.artworkId ? 'workspace' : 'nuova opera', s.artworkId ? '<button class="btn small" data-nav="home">← Elenco</button>' : '');
+  html += '<h1 class="page-title">' + (s.artworkId ? 'Genera la scheda didattica' : 'Nuova opera') + '</h1>';
+  html += '<p class="lead">' + (s.artworkId ? 'Rivedi i contenuti proposti dall’AI, correggi se serve e premi “Salva nel database”.' : 'Carica l’immagine del dipinto. Tutto il resto — scheda, dettagli, sezioni — lo propone l’intelligenza artificiale.') + '</p>';
+
+  // --- STEP 1: upload ---
+  html += '<div class="card" style="margin-bottom:18px"><div class="step-head"><span class="eyebrow">Passo 1 · Immagine</span></div>';
+  if (!s.artworkId) {
+    html += '<div class="dropzone" id="dz"><div class="dz-icon">🖼</div><p><strong>Clicca o trascina qui l’immagine del dipinto</strong></p><p>JPG, PNG o WebP</p><input type="file" id="file" accept="image/*" hidden /></div>';
+  } else {
+    html += '<div class="image-stage" style="max-width:520px"><img id="wsImg" src="' + esc(s.imageUrl) + '" alt="opera" crossorigin="anonymous" /><div id="overlays"></div></div>';
+    html += '<p class="step-note">Rettangoli = dettagli proposti dall’AI. Selezionali nella colonna a destra.</p>';
+  }
+  html += '</div>';
+
+  if (s.artworkId) {
+    // --- STEP 2: metadati ---
+    html += '<div class="card" style="margin-bottom:18px"><div class="step-head"><span class="eyebrow">Passo 2 · Scheda dell’opera</span>' +
+      '<button class="btn small" id="btnMeta">✨ Riconosci automaticamente</button></div>';
+    html += '<div class="meta-grid">';
+    [['title', 'Titolo'], ['artist', 'Artista'], ['date', 'Data'], ['period', 'Periodo'], ['technique', 'Tecnica'], ['institution', 'Istituzione'], ['location', 'Collocazione']].forEach(function (f) {
+      html += '<div class="field"><label>' + f[1] + '</label><input data-meta="' + f[0] + '" value="' + esc(s.meta[f[0]]) + '" placeholder="' + (f[0] === 'location' ? 'es. Corridoio nord, Convento di San Marco' : '') + '" /></div>';
+    });
+    html += '</div></div>';
+
+    // --- STEP 3: dettagli + overview ---
+    html += '<div class="card"><div class="step-head"><span class="eyebrow">Passo 3 · Dettagli notevoli</span>' +
+      '<span style="display:flex;gap:8px"><button class="btn small" id="btnDetails">✨ Proponi dettagli</button>' +
+      '<button class="btn small primary" id="btnGenAll">⚡ Genera tutte le tab</button></span></div>';
+    html += '<div id="detailsArea"></div></div>';
+
+    // --- STEP 4: overview ---
+    html += '<div class="card" style="margin-top:18px"><div class="step-head"><span class="eyebrow">Passo 4 · Presentazione</span>' +
+      '<button class="btn small" id="btnOverview">✨ Genera presentazione</button></div><div id="overviewArea"></div></div>';
+
+    // --- STEP 5: salva ---
+    html += '<div style="margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+      '<button class="btn primary" id="btnSave" style="padding:15px 26px">💾 Salva nel database</button>' +
+      '<span class="step-note" id="saveNote">Genera i contenuti, poi salva: la scheda verrà memorizzata nel database SQLite.</span></div>';
+  }
+  appEl.innerHTML = html;
+  bindStudio(s);
+}
+
+function bindStudio(s) {
+  var dz = document.getElementById('dz');
+  if (dz) {
+    var input = document.getElementById('file');
+    dz.onclick = function () { input.click(); };
+    dz.ondragover = function (e) { e.preventDefault(); dz.classList.add('over'); };
+    dz.ondragleave = function () { dz.classList.remove('over'); };
+    dz.ondrop = function (e) { e.preventDefault(); dz.classList.remove('over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); };
+    input.onchange = function () { if (input.files[0]) handleFile(input.files[0]); };
+  }
+  if (s.artworkId) {
+    var metaBtn = document.getElementById('btnMeta');
+    if (metaBtn) metaBtn.onclick = function () { runMeta(); };
+    var dBtn = document.getElementById('btnDetails');
+    if (dBtn) dBtn.onclick = function () { runDetails(); };
+    var oBtn = document.getElementById('btnOverview');
+    if (oBtn) oBtn.onclick = function () { runOverview(); };
+    var sBtn = document.getElementById('btnSave');
+    if (sBtn) sBtn.onclick = function () { runSave(); };
+    var metaInputs = appEl.querySelectorAll('[data-meta]');
+    metaInputs.forEach(function (inp) {
+      inp.onchange = function () { s.meta[inp.getAttribute('data-meta')] = inp.value; };
+      inp.oninput = function () { s.meta[inp.getAttribute('data-meta')] = inp.value; };
+    });
+    refreshMetaFromServer();
+    renderDetailsPanel();
+    renderOverviewPanel();
+  }
+}
+
+function handleFile(file) {
+  if (!file.type.match(/^image\//)) return toast('Il file deve essere un’immagine');
+  toast('Caricamento immagine…');
+  fileToDataUrl(file).then(function (dataUrl) {
+    var id = 'opera-' + Date.now().toString(36);
+    studio.pendingFile = dataUrl;
+    return post('/api/artworks', { id: id, imageDataUrl: dataUrl }).then(function (body) {
+      studio.artworkId = body.artwork.id;
+      studio.imageUrl = body.artwork.imageUrl;
+      toast('Immagine caricata: opera creata', true);
+      render();
+      var img = document.getElementById('wsImg');
+      if (img) img.onload = function () { runMeta(); };
+      // auto-proponi metadati dopo il primo render
+      setTimeout(function () { if (studio && studio.artworkId) runMeta(); }, 400);
+    }).catch(function (e) { toast(e.message); });
+  });
+}
+function refreshMetaFromServer() {
+  api('/api/artworks/' + studio.artworkId).then(function (full) {
+    ['title', 'artist', 'date', 'period', 'technique', 'institution', 'location'].forEach(function (k) {
+      var val = full[k];
+      if (val) studio.meta[k] = val;
+    });
+    var inputs = appEl.querySelectorAll('[data-meta]');
+    inputs.forEach(function (inp) { inp.value = studio.meta[inp.getAttribute('data-meta')] || ''; });
+    studio.details = full.details || [];
+    studio.activeDetailId = studio.activeDetailId || (studio.details[0] ? studio.details[0].id : null);
+    renderDetailsPanel();
+    renderOverviewPanel();
+    renderOverlays();
+  }).catch(function () {});
+}
+function collectMetaFromInputs() {
+  var inputs = appEl.querySelectorAll('[data-meta]');
+  inputs.forEach(function (inp) { studio.meta[inp.getAttribute('data-meta')] = inp.value; });
+}
+function runMeta() {
+  collectMetaFromInputs();
+  var btn = document.getElementById('btnMeta');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Riconoscimento…'; }
+  post('/api/artworks/' + studio.artworkId + '/generate/meta').then(function (body) {
+    var m = body.meta || {};
+    Object.keys(m).forEach(function (k) {
+      if (k !== 'description' && m[k]) studio.meta[k] = m[k];
+    });
+    render();
+    toast('Metadati riconosciuti — verifica e correggi se serve', true);
+  }).catch(function (e) { toast('Riconoscimento fallito: ' + e.message); render(); });
+}
+function renderOverlays() {
+  var wrap = document.getElementById('overlays');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  var stage = wrap.parentElement;
+  studio.details.forEach(function (d) {
+    var el = document.createElement('div');
+    el.className = 'region-overlay';
+    el.style.left = (d.region.x * 100) + '%';
+    el.style.top = (d.region.y * 100) + '%';
+    el.style.width = (d.region.width * 100) + '%';
+    el.style.height = (d.region.height * 100) + '%';
+    var lab = document.createElement('span');
+    lab.textContent = (studio.details.indexOf(d) + 1) + ' · ' + d.title;
+    el.appendChild(lab);
+    wrap.appendChild(el);
+  });
+}
+function runDetails() {
+  var btn = document.getElementById('btnDetails');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analisi dell’immagine…'; }
+  post('/api/artworks/' + studio.artworkId + '/generate/details').then(function (body) {
+    var items = (body.details || []).map(function (d) { return { title: d.title, category: d.category, region: d.region, short: d.short || '' }; });
+    if (!items.length) throw new Error('Il modello non ha proposto dettagli: riprova');
+    return put('/api/artworks/' + studio.artworkId + '/details', { details: items }).then(function (saved) {
+      studio.details = saved.details || [];
+      studio.activeDetailId = studio.activeDetailId || (studio.details[0] ? studio.details[0].id : null);
+      render();
+      toast('Proposti ' + studio.details.length + ' dettagli — ora genera i contenuti', true);
+    });
+  }).catch(function (e) { toast('Proposta fallita: ' + e.message); render(); });
+}
+function detailReady(detail, tab) {
+  var t = detail.tabs && detail.tabs[tab];
+  return t && t.status && t.status !== 'draft' && (t.content.observation || t.content.curiosity || t.content.comparisons || t.content.openQuestions || t.content.meaning || t.content.relation);
+}
+function allTabGenerated(detail) {
+  return detailReady(detail, 'studio') && detailReady(detail, 'approfondimento');
+}
+function renderDetailsPanel() {
+  var area = document.getElementById('detailsArea');
+  if (!area) return;
+  var s = studio;
+  if (!s.details.length) { area.innerHTML = '<p class="step-note">Nessun dettaglio ancora: premi “Proponi dettagli” per far analizzare l’immagine all’AI.</p>'; return; }
+  var html = '<div class="detail-list">';
+  s.details.forEach(function (d, i) {
+    var okSt = detailReady(d, 'studio') ? 'studio ✓' : '';
+    var okA = detailReady(d, 'approfondimento') ? 'approfondimento ✓' : '';
+    html += '<div class="detail-item' + (s.activeDetailId === d.id ? ' active' : '') + '" data-sel="' + d.id + '">' +
+      '<span class="n">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<div class="d"><strong>' + esc(d.title) + '</strong><small>' + esc(d.category || '') + '</small></div>' +
+      '<div class="st">' + (allTabGenerated(d) ? '✔ completo' : (okSt || okA ? 'in corso…' : 'da generare')) + '</div></div>';
+  });
+  html += '</div>';
+  var active = s.details.find(function (d) { return d.id === s.activeDetailId; });
+  if (active) html += renderDetailEditor(active);
+  area.innerHTML = html;
+  area.querySelectorAll('[data-sel]').forEach(function (el) {
+    el.onclick = function () {
+      s.activeDetailId = Number(el.getAttribute('data-sel'));
+      renderDetailsPanel();
+    };
+  });
+  var genBtn = document.getElementById('btnGenAll');
+  if (genBtn) genBtn.onclick = function () { runGenAll(); };
+  rebindDetailEditor();
+}
+function renderDetailEditor(detail) {
+  var s = studio;
+  var keys = sectionOf(s.activeTab);
+  var tabData = detail.tabs && detail.tabs[s.activeTab];
+  var html = '<div class="content-tabs">';
+  [['studio', 'Studio del dettaglio'], ['approfondimento', 'Approfondimento']].forEach(function (t) {
+    html += '<div class="ctab' + (s.activeTab === t[0] ? ' active' : '') + '" data-ctab="' + t[0] + '">' + t[1] + '</div>';
+  });
+  html += '</div>';
+  var content = (tabData && tabData.content) || {};
+  var empty = !content.observation && !content.curiosity && !content.comparisons && !content.openQuestions && !content.meaning && !content.relation;
+  html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:6px">' +
+    '<button class="btn small" data-regen="' + s.activeTab + '">' + (empty ? '✨ Genera questa tab' : '↻ Rigenera questa tab') + '</button></div>';
+  if (empty) html += '<p class="step-note">Contenuto non ancora generato. Premi “Genera questa tab” oppure “Genera tutte le tab” sopra.</p>';
+  keys.forEach(function (k) {
+    html += '<div class="section-block"><h4>' + fieldLabel(k) + '</h4>' +
+      '<textarea data-field="' + k + '">' + esc(content[k] || '') + '</textarea></div>';
+  });
+  if (s.activeTab === 'studio' || s.activeTab === 'approfondimento') {
+    html += '<div class="section-block look"><h4>' + fieldLabel('lookAgain') + '</h4>' +
+      '<textarea data-field="lookAgain">' + esc(content.lookAgain || '') + '</textarea></div>';
+  }
+  html += '<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn small green" id="btnTabSave">Salva questa tab</button></div>';
+  return html;
+}
+function rebindDetailEditor() {
+  var area = document.getElementById('detailsArea');
+  if (!area) return;
+  var ctab = area.querySelectorAll('[data-ctab]');
+  ctab.forEach(function (el) {
+    el.onclick = function () { studio.activeTab = el.getAttribute('data-ctab'); renderDetailsPanel(); };
+  });
+  var save = document.getElementById('btnTabSave');
+  if (save) save.onclick = function () { saveActiveTab(); };
+  var regen = area.querySelectorAll('[data-regen]');
+  regen.forEach(function (b) {
+    b.onclick = function () {
+      var tab = b.getAttribute('data-regen');
+      genTab(studio.activeDetailId, tab, b);
+    };
+  });
+}
+function collectTabFields(detailId, tab) {
+  var area = document.getElementById('detailsArea');
+  var detail = studio.details.find(function (d) { return d.id === detailId; });
+  var content = {};
+  (sectionOf(tab)).forEach(function (k) {
+    var ta = area.querySelector('textarea[data-field="' + k + '"]');
+    if (ta) content[k] = ta.value;
+  });
+  var la = area.querySelector('textarea[data-field="lookAgain"]');
+  if (la) content.lookAgain = la.value;
+  return content;
+}
+function saveActiveTab() {
+  var s = studio;
+  var content = collectTabFields(s.activeDetailId, s.activeTab);
+  var payload = Object.assign({}, content, { status: 'generated' });
+  patch('/api/details/' + s.activeDetailId + '/content/' + s.activeTab, payload).then(function () {
+    return api('/api/artworks/' + s.artworkId).then(function (full) {
+      studio.details = full.details || [];
+      renderDetailsPanel();
+      toast('Contenuto salvato', true);
+    });
+  }).catch(function (e) { toast(e.message); });
+}
+function genTab(detailId, tab, btn) {
+  if (!btn) btn = document.createElement('button');
+  var old = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  loadImage(studio.imageUrl).then(function (img) {
+    var detail = studio.details.find(function (d) { return d.id === detailId; });
+    if (!img || !detail) throw new Error('Immagine non disponibile');
+    return cropDataUrl(img, detail.region, 900).then(function (crop) {
+      return post('/api/details/' + detailId + '/generate/' + tab, { selectionImage: crop }).then(function () {
+        return api('/api/artworks/' + studio.artworkId);
+      }).then(function (full) {
+        studio.details = full.details || [];
+        renderDetailsPanel();
+        toast('Tab "' + (tab === 'studio' ? 'Studio del dettaglio' : 'Approfondimento') + '" generata', true);
+      });
+    });
+  }).catch(function (e) { toast('Generazione fallita: ' + e.message); renderDetailsPanel(); });
+}
+function renderOverviewPanel() {
+  var area = document.getElementById('overviewArea');
+  if (!area) return;
+  var full = null;
+  api('/api/artworks/' + studio.artworkId).then(function (f) {
+    studio.details = f.details || [];
+    var ov = f.overview;
+    area.innerHTML = ov && (ov.painting || ov.artist)
+      ? '<div class="ov-grid"><div class="ov-col"><h4>IL DIPINTO</h4><p>' + esc(ov.painting) + '</p></div><div class="ov-col"><h4>L’ARTISTA</h4><p>' + esc(ov.artist) + '</p></div></div>'
+      : '<p class="step-note">Nessuna presentazione ancora: premi “Genera presentazione”.</p>';
+  }).catch(function () {});
+}
+function runOverview() {
+  var btn = document.getElementById('btnOverview');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generazione…'; }
+  post('/api/artworks/' + studio.artworkId + '/generate/overview').then(function () {
+    renderOverviewPanel();
+    toast('Presentazione generata', true);
+    render();
+  }).catch(function (e) { toast('Presentazione fallita: ' + e.message); render(); });
+}
+function runSave() {
+  collectMetaFromInputs();
+  var s = studio;
+  var btn = document.getElementById('btnSave');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Salvataggio…'; }
+  var note = document.getElementById('saveNote');
+  if (note) note.textContent = '';
+  // salva metadati correnti
+  patch('/api/artworks/' + s.artworkId, s.meta).then(function () {
+    // genera le tab ancora mancanti, in parallelo (max 3 dettagli alla volta)
+    var plans = genPlans();
+    var saveTotal = planTabCount(plans);
+    var doneSave = 0;
+    if (note && saveTotal) note.textContent = 'Genero in parallelo i ' + saveTotal + ' contenuti mancanti (~2 min)…';
+    return runPool(plans, function (plan) {
+      return loadImage(s.imageUrl).then(function (img) {
+        var det = s.details.find(function (x) { return x.id === plan.detailId; });
+        if (!img || !det) return Promise.resolve();
+        doneSave += (plan.needS ? 1 : 0) + (plan.needA ? 1 : 0);
+        if (note && saveTotal) note.textContent = 'Genero ' + Math.min(doneSave, saveTotal) + '/' + saveTotal + ': "' + det.title + '"…';
+        return cropDataUrl(img, det.region, 900).then(function (crop) {
+          if (plan.needS && plan.needA) return post('/api/details/' + plan.detailId + '/generate/both', { selectionImage: crop });
+          return post('/api/details/' + plan.detailId + '/generate/' + (plan.needS ? 'studio' : 'approfondimento'), { selectionImage: crop });
+        });
+      });
+    }, 3).then(function () {
+      // salva ogni contenuto esistente con i campi correnti del form
+      var saves = s.details.map(function (d) {
+        return ['studio', 'approfondimento'].map(function (tab) {
+          return api('/api/artworks/' + s.artworkId).then(function (full) {
+            var fresh = full.details.find(function (x) { return x.id === d.id; });
+            var t = fresh && fresh.tabs[tab];
+            if (!t) return Promise.resolve();
+            return patch('/api/details/' + d.id + '/content/' + tab, Object.assign({}, t.content, { status: 'approved' }));
+          });
+        });
+      });
+      return Promise.all([].concat.apply([], saves));
+    }).then(function () {
+      return post('/api/artworks/' + s.artworkId + '/approve');
+    }).then(function () {
+      toast('Salvato nel database SQLite', true);
+      if (note) note.textContent = '';
+      setTimeout(function () { studio = null; state.view = 'home'; refreshList(); }, 1400);
+    });
+  }).catch(function (e) { toast('Salvataggio fallito: ' + e.message); render(); });
+}
+function genPlans() {
+  var s = studio;
+  var plans = [];
+  (s.details || []).forEach(function (d) {
+    var needS = !detailReady(d, 'studio');
+    var needA = !detailReady(d, 'approfondimento');
+    if (needS || needA) plans.push({ detailId: d.id, title: d.title, needS: needS, needA: needA });
+  });
+  return plans;
+}
+function planTabCount(plans) {
+  var n = 0;
+  plans.forEach(function (p) { n += (p.needS ? 1 : 0) + (p.needA ? 1 : 0); });
+  return n;
+}
+function runPool(tasks, fn, limit) {
+  return new Promise(function (resolve, reject) {
+    if (!tasks.length) return resolve();
+    var i = 0, running = 0, failed = false, doneCount = 0;
+    function launch() {
+      while (running < (limit || 3) && i < tasks.length && !failed) {
+        var t = tasks[i++];
+        running += 1;
+        fn(t).then(function () {
+          running -= 1; doneCount += 1;
+          if (doneCount === tasks.length) resolve();
+          else launch();
+        }, function (e) { failed = true; reject(e); });
+      }
+    }
+    launch();
+  });
+}
+function extractSections(body, tab) {
+  var c = body && body.content;
+  if (!c) return null;
+  var row = (c.studio || c.approfondimento) ? (tab === 'studio' ? c.studio : c.approfondimento) : c;
+  return row && row.content ? row.content : null;
+}
+function genAllLabel(done, total) {
+  return '<span class="spinner"></span> Generazione ' + done + '/' + total;
+}
+function markDetailBadge(detailId, studioDone, apprDone) {
+  var area = document.getElementById('detailsArea');
+  if (!area) return;
+  var st = area.querySelector('.detail-item[data-sel="' + detailId + '"] .st');
+  if (!st) return;
+  st.textContent = (studioDone && apprDone) ? '✔ completo' : 'in corso…';
+}
+function runGenAll() {
+  var s = studio;
+  var note = document.getElementById('saveNote');
+  var genBtn = document.getElementById('btnGenAll');
+  var plans = genPlans();
+  var totalTabs = planTabCount(plans);
+  if (!totalTabs) { toast('Tutte le tab sono già generate', true); return; }
+  if (genBtn) { genBtn.disabled = true; genBtn.innerHTML = genAllLabel(0, totalTabs); }
+  if (note) note.textContent = 'Genero in parallelo ' + plans.length + ' dettagli (' + totalTabs + ' tab) — visione condivisa tra le due tab. ~1 minuto per ondata.';
+
+  var doneTabs = 0;
+  function bump(plan, nTabs) {
+    doneTabs += nTabs;
+    var shown = Math.min(doneTabs, totalTabs);
+    if (genBtn) genBtn.innerHTML = genAllLabel(shown, totalTabs);
+    if (note) note.textContent = 'Completate ' + shown + '/' + totalTabs + ' tab. Prossimi dettagli in elaborazione…';
+    api('/api/artworks/' + s.artworkId).then(function (full) {
+      s.details = full.details || [];
+      var fresh = s.details.find(function (d) { return d.id === plan.detailId; });
+      if (fresh) markDetailBadge(plan.detailId, detailReady(fresh, 'studio'), detailReady(fresh, 'approfondimento'));
+    }).catch(function () {});
+  }
+  function fillVisibleEditor(plan, body) {
+    if (s.activeDetailId !== plan.detailId) return;
+    var content = extractSections(body, s.activeTab);
+    if (!content) return;
+    sectionOf(s.activeTab).forEach(function (k) {
+      var ta = document.querySelector('textarea[data-field="' + k + '"]');
+      if (ta) ta.value = content[k] || '';
+    });
+    var la = document.querySelector('textarea[data-field="lookAgain"]');
+    if (la) la.value = content.lookAgain || '';
+  }
+
+  runPool(plans, function (plan) {
+    var what = (plan.needS && plan.needA) ? 'entrambe le tab' : (plan.needS ? 'solo Studio del dettaglio' : 'solo Approfondimento');
+    if (note) note.textContent = 'Elaboro: ' + plan.title + ' (' + what + ')…';
+    return loadImage(s.imageUrl).then(function (img) {
+      var det = s.details.find(function (x) { return x.id === plan.detailId; });
+      if (!img || !det) return Promise.resolve(null);
+      return cropDataUrl(img, det.region, 900).then(function (crop) {
+        if (plan.needS && plan.needA) return post('/api/details/' + plan.detailId + '/generate/both', { selectionImage: crop });
+        return post('/api/details/' + plan.detailId + '/generate/' + (plan.needS ? 'studio' : 'approfondimento'), { selectionImage: crop });
+      });
+    }).then(function (body) {
+      bump(plan, (plan.needS ? 1 : 0) + (plan.needA ? 1 : 0));
+      fillVisibleEditor(plan, body);
+    });
+  }, 3).then(function () {
+    return api('/api/artworks/' + s.artworkId);
+  }).then(function (full) {
+    s.details = full.details || [];
+    if (note) note.textContent = 'Tutti i contenuti generati — verifica e premi “Salva nel database”.';
+    render();
+    toast('Contenuti generati — verifica e salva', true);
+  }).catch(function (e) { toast('Generazione fallita: ' + e.message); render(); });
+}
+
+/* ---------- viewer ---------- */
+function openViewer(id) { state.view = 'viewer'; state.viewerId = id; render(); }
+function renderViewer() {
+  var html = topbar('anteprima didattica', '<button class="btn small" data-nav="home">← Elenco</button>');
+  html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
+  appEl.innerHTML = html;
+  var b = appEl.querySelector('[data-nav]');
+  if (b) b.onclick = function () { state.view = 'home'; refreshList(); };
+  api('/api/artworks/' + state.viewerId).then(function (full) {
+    if (!full.overview) { appEl.innerHTML = topbar('anteprima', '') + '<div class="empty-state"><h2>Opera non pronta</h2><p>Genera e salva prima i contenuti.</p></div>'; return; }
+    renderViewerBody(full);
+  }).catch(function () { appEl.innerHTML = '<div class="empty-state">Errore di caricamento</div>'; });
+}
+function renderViewerBody(full) {
+  state.viewerArtwork = full;
+  state.viewerDetailId = state.viewerDetailId || (full.details[0] ? full.details[0].id : null);
+  state.viewerTab = state.viewerTab || 'studio';
+  var html = '<div class="viewer-title"><span class="eyebrow">' + esc(full.period || '') + '</span>' +
+    '<h1>' + esc(full.title) + '</h1>' +
+    '<p class="meta">' + esc(full.artist || '') + (full.date ? ' · ' + esc(full.date) : '') + (full.institution ? ' · ' + esc(full.institution) : '') + '</p></div>';
+  html += '<div class="card" style="margin:18px 0"><div class="ov-grid">' +
+    '<div class="ov-col"><h4>IL DIPINTO</h4><p>' + esc(full.overview.painting) + '</p></div>' +
+    '<div class="ov-col"><h4>L’ARTISTA</h4><p>' + esc(full.overview.artist) + '</p></div></div></div>';
+  html += '<div class="viewer-layout">';
+  // colonna immagine
+  if (state.viewerAnnotated === undefined) state.viewerAnnotated = !!full.annotatedImageUrl;
+  var dispUrl = (state.viewerAnnotated && full.annotatedImageUrl) ? full.annotatedImageUrl : full.imageUrl;
+  html += '<div><div class="image-stage"><img id="vwImg" src="' + esc(dispUrl) + '" alt="' + esc(full.title) + '" crossorigin="anonymous" /><div id="vwOverlays"></div></div>';
+  html += '<div class="hotspot-chip-row">';
+  if (full.annotatedImageUrl) html += '<button class="hchip toggle" data-vannot="1">' + (state.viewerAnnotated ? '🖼 Vista pulita' : '👁 Mostra riquadri') + '</button>';
+  full.details.forEach(function (d, i) {
+    html += '<button class="hchip' + (state.viewerDetailId === d.id ? ' active' : '') + '" data-vsel="' + d.id + '">' + (i + 1) + ' · ' + esc(d.title) + '</button>';
+  });
+  html += '</div></div>';
+  // colonna dettaglio
+  var active = full.details.find(function (d) { return d.id === state.viewerDetailId; }) || full.details[0];
+  html += '<div class="card">' + renderViewerDetail(active) + '</div>';
+  html += '</div>';
+  document.getElementById('viewerBody').innerHTML = html;
+  drawViewerOverlays(full);
+  bindViewer(full);
+}
+function drawViewerOverlays(full) {
+  var wrap = document.getElementById('vwOverlays');
+  if (!wrap) return;
+  if (state.viewerAnnotated && full.annotatedImageUrl) { wrap.innerHTML = ''; return; } // i riquadri sono già nell'immagine
+  wrap.innerHTML = '';
+  var stage = wrap.parentElement;
+  full.details.forEach(function (d) {
+    var active = d.id === state.viewerDetailId;
+    var el = document.createElement('div');
+    el.className = 'region-overlay';
+    el.style.left = (d.region.x * 100) + '%';
+    el.style.top = (d.region.y * 100) + '%';
+    el.style.width = (d.region.width * 100) + '%';
+    el.style.height = (d.region.height * 100) + '%';
+    if (active) { el.style.borderColor = 'var(--mustard)'; el.style.background = 'rgba(226,172,68,.15)'; el.style.zIndex = '2'; }
+    wrap.appendChild(el);
+  });
+}
+function renderViewerDetail(d) {
+  var tabs = d.tabs || {};
+  var html = '<div class="panel-head"><div><span class="eyebrow">' + esc(d.category || 'dettaglio') + '</span><h3>' + esc(d.title) + '</h3></div>' +
+    '<span class="confidence">Analisi generata</span></div>';
+  html += '<div class="content-tabs">';
+  [['studio', 'Studio del dettaglio'], ['approfondimento', 'Approfondimento']].forEach(function (t) {
+    html += '<div class="ctab' + (state.viewerTab === t[0] ? ' active' : '') + '" data-vtab="' + t[0] + '">' + t[1] + '</div>';
+  });
+  html += '</div>';
+  var content = (tabs[state.viewerTab] && tabs[state.viewerTab].content) || {};
+  var keys = state.viewerTab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions'];
+  keys.forEach(function (k) {
+    if (!content[k]) return;
+    html += '<div class="section-block" style="border-top:none"><h4>' + fieldLabel(k) + '</h4><p style="font-size:12px;line-height:1.7;margin:0">' + esc(content[k]) + '</p></div>';
+  });
+  if (content.lookAgain) {
+    html += '<div class="section-block look" style="border-top:none;background:var(--paper);border-radius:8px;padding:11px 13px"><p style="margin:0;font-size:12px;line-height:1.55"><strong style="color:var(--coral)">Guarda ancora:</strong> ' + esc(content.lookAgain) + '</p></div>';
+  }
+  html += '<div class="sources" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">';
+  (state.viewerSources || []).forEach(function (s) {});
+  html += '</div>';
+  html += '<p class="muted-note">Contenuto generato con l’intelligenza artificiale e salvato nel database di art-creator. Verifica i dati con le fonti prima dell’uso didattico.</p>';
+  return html;
+}
+function bindViewer(full) {
+  appEl.querySelectorAll('[data-vsel]').forEach(function (b) {
+    b.onclick = function () { state.viewerDetailId = Number(b.getAttribute('data-vsel')); renderViewerBody(full); };
+  });
+  appEl.querySelectorAll('[data-vtab]').forEach(function (b) {
+    b.onclick = function () { state.viewerTab = b.getAttribute('data-vtab'); renderViewerBody(full); };
+  });
+  var van = appEl.querySelector('[data-vannot]');
+  if (van) van.onclick = function () { state.viewerAnnotated = !state.viewerAnnotated; renderViewerBody(full); };
+}
+function bindGlobal() {
+  appEl.addEventListener('click', function (e) {
+    var nav = e.target.closest('[data-nav]');
+    if (nav) {
+      e.preventDefault();
+      var dest = nav.getAttribute('data-nav');
+      if (dest === 'home') { state.view = 'home'; refreshList(); }
+      else if (dest === 'new') { studio = new StudioView(); state.view = 'studio'; render(); }
+      return;
+    }
+    var open = e.target.closest('[data-open]');
+    if (open) { e.preventDefault(); openStudio(open.getAttribute('data-open')); return; }
+    var view = e.target.closest('[data-view]');
+    if (view) { e.preventDefault(); openViewer(view.getAttribute('data-view')); return; }
+    var del = e.target.closest('[data-del]');
+    if (del) { e.preventDefault(); removeArtwork(del.getAttribute('data-del')); return; }
+  });
+}
+/* ---------- home actions ---------- */
+function refreshList() {
+  api('/api/artworks').then(function (body) {
+    state.list = body.artworks || [];
+    state.view = 'home';
+    render();
+  }).catch(function (e) { toast(e.message); });
+}
+function removeArtwork(id) {
+  if (!confirm('Eliminare questa opera e i suoi contenuti dal database?')) return;
+  api('/api/artworks/' + id, { method: 'DELETE' }).then(function () {
+    toast('Opera eliminata', true);
+    refreshList();
+  }).catch(function (e) { toast(e.message); });
+}
+function openStudio(id) {
+  studio = new StudioView();
+  studio.artworkId = id;
+  api('/api/artworks/' + id).then(function (full) {
+    studio.imageUrl = full.imageUrl;
+    ['title', 'artist', 'date', 'period', 'technique', 'institution', 'location'].forEach(function (k) { if (full[k]) studio.meta[k] = full[k]; });
+    studio.details = full.details || [];
+    studio.activeDetailId = studio.details[0] ? studio.details[0].id : null;
+    state.view = 'studio';
+    render();
+  }).catch(function (e) { toast(e.message); });
+}
+/* ================= boot ================= */
+bindGlobal();
+api('/api/status').then(function (s) {
+  if (!s.configured) toast('Chiave OpenRouter non configurata: le generazioni non funzioneranno');
+});
+refreshList();
+</script>
+</body>
+</html>
