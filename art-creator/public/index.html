@@ -112,6 +112,20 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .cap .cap-c{display:block;font-size:9px;color:var(--muted);font-weight:500;margin-top:2px;text-transform:uppercase;letter-spacing:.06em}
 .cap.on{border-color:var(--coral);background:#fff9f5;box-shadow:inset 0 -2px 0 var(--coral)}
 .spot-hint{font-size:10px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+.spot-edit{position:absolute;inset:0;pointer-events:none;z-index:3}
+.spot-edit .bx{position:absolute;border:2px dashed rgba(220,112,86,.9);pointer-events:auto;cursor:move;touch-action:none}
+.spot-edit .bx.on{border:2px solid var(--coral);background:rgba(220,112,86,.10)}
+.spot-edit .bx-lab{position:absolute;top:4px;left:4px;background:var(--coral);color:#fff;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;line-height:1.4;pointer-events:none;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis}
+.spot-edit .bx.on .bx-lab{background:var(--ink)}
+.spot-edit .h{position:absolute;width:12px;height:12px;background:#fff;border:2px solid var(--coral);border-radius:3px;pointer-events:auto;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.spot-edit .h.nw{left:-7px;top:-7px;cursor:nwse-resize}
+.spot-edit .h.n{left:50%;top:-7px;margin-left:-6px;cursor:ns-resize}
+.spot-edit .h.ne{right:-7px;top:-7px;cursor:nesw-resize}
+.spot-edit .h.e{right:-7px;top:50%;margin-top:-6px;cursor:ew-resize}
+.spot-edit .h.se{right:-7px;bottom:-7px;cursor:nwse-resize}
+.spot-edit .h.s{left:50%;bottom:-7px;margin-left:-6px;cursor:ns-resize}
+.spot-edit .h.sw{left:-7px;bottom:-7px;cursor:nesw-resize}
+.spot-edit .h.w{left:-7px;top:50%;margin-top:-6px;cursor:ew-resize}
 @media(max-width:760px){.img-panel{grid-template-columns:1fr}.cap-rail{max-height:200px}}
 /* feedback salvataggio */
 .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:#1d5a43;color:#fff;padding:15px 24px;border-radius:30px;font-size:13px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 12px 34px rgba(0,0,0,.25);transition:.35s;z-index:50;pointer-events:none}
@@ -283,6 +297,7 @@ function StudioView() {
   this.details = [];
   this.activeDetailId = null;
   this.spotId = null;
+  this.editBoxes = false;
   this.activeTab = 'studio';
   this.genBusy = false;
   this.meta = { title: '', artist: '', date: '', period: '', technique: '', institution: '', location: '' };
@@ -302,8 +317,11 @@ function renderStudio() {
   if (!s.artworkId) {
     html += '<div class="dropzone" id="dz"><div class="dz-icon">🖼</div><p><strong>Clicca o trascina qui l’immagine del dipinto</strong></p><p>JPG, PNG o WebP</p><input type="file" id="file" accept="image/*" hidden /></div>';
   } else {
+    html += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<button class="btn small" id="btnEditBoxes">✏️ Adatta riquadri</button>' +
+      '<span class="spot-hint" id="editBoxHint" style="margin:0">Ridimensiona i riquadri dei dettagli per adattarli alle figure complete.</span></div>';
     html += '<div class="img-panel"><div class="spot-wrap"><canvas id="wsSpot"></canvas></div><div class="cap-rail" id="wsRail"></div></div>';
-    html += '<p class="spot-hint">L’immagine occupa le fasce 1–4; la fascia 5 a destra elenca le didascalie dei dettagli. Premi una didascalia: quel dettaglio resta a colori, il resto dell’immagine diventa in scala di grigi. Ripremi la didascalia attiva per tornare all’immagine completa.</p>';
+    html += '<p class="spot-hint" id="spotHintTxt">L’immagine occupa le fasce 1–4; la fascia 5 a destra elenca le didascalie dei dettagli. Premi una didascalia: quel dettaglio resta a colori, il resto dell’immagine diventa in scala di grigi. Ripremi la didascalia attiva per tornare all’immagine completa.</p>';
   }
   html += '</div>';
 
@@ -357,6 +375,8 @@ function bindStudio(s) {
     if (oBtn) oBtn.onclick = function () { runOverview(); };
     var simBtn = document.getElementById('btnSimilar');
     if (simBtn) simBtn.onclick = function () { runSimilar(); };
+    var editBtn = document.getElementById('btnEditBoxes');
+    if (editBtn) editBtn.onclick = function () { toggleBoxEditor(); };
     var p4 = appEl.querySelectorAll('[data-p4]');
     p4.forEach(function (el) {
       el.onclick = function () {
@@ -934,6 +954,9 @@ function paintStudioPanel() {
   if (!document.getElementById('wsSpot')) return;
   var s = studio;
   if (!s || !s.imageUrl) return;
+  var staleEdit = document.getElementById('wsEdit');
+  if (s.editBoxes) { if (!staleEdit) paintBoxEditor(); else bindBoxEditor(document.querySelector('.spot-wrap')); return; }
+  if (staleEdit) staleEdit.remove();
   drawSpotOnCanvas('wsSpot', s.imageUrl, s.details || [], s.spotId);
   bindRail('wsRail', s.details || [], s.spotId, function (id) {
     if (!studio) return;
@@ -942,6 +965,141 @@ function paintStudioPanel() {
     paintStudioPanel();
     renderDetailsPanel();
   });
+}
+
+/* ---------- editor hotspot: ridimensiona e sposta i riquadri ---------- */
+function toggleBoxEditor() {
+  var s = studio;
+  if (!s || !s.artworkId) return;
+  s.editBoxes = !s.editBoxes;
+  var btn = document.getElementById('btnEditBoxes');
+  if (btn) {
+    btn.textContent = s.editBoxes ? '✓ Fine modifica riquadri' : '✏️ Adatta riquadri';
+    btn.classList.toggle('coral', s.editBoxes);
+  }
+  var hint = document.getElementById('editBoxHint');
+  if (hint) {
+    hint.textContent = s.editBoxes
+      ? 'Tutti i riquadri sono visibili. Trascina le maniglie del riquadro attivo per ridimensionarlo (o trascina dentro il riquadro per spostarlo). Al rilascio le nuove dimensioni vengono salvate nel database e l’immagine annotata viene rigenerata.'
+      : 'Ridimensiona i riquadri dei dettagli per adattarli alle figure complete.';
+  }
+  paintStudioPanel();
+}
+function paintBoxEditor() {
+  var wrap = document.querySelector('.spot-wrap');
+  var s = studio;
+  if (!wrap || !s) return;
+  drawSpotOnCanvas('wsSpot', s.imageUrl, [], null);
+  var old = document.getElementById('wsEdit');
+  if (old) old.remove();
+  var list = s.details || [];
+  bindRail('wsRail', list, s.activeDetailId, function (id) {
+    if (!studio) return;
+    studio.activeDetailId = id;
+    renderDetailsPanel();
+    paintBoxEditor();
+  });
+  if (!list.length) return;
+  var ov = document.createElement('div');
+  ov.id = 'wsEdit';
+  ov.className = 'spot-edit';
+  list.forEach(function (d, i) {
+    var r = d.region || {};
+    var active = String(d.id) === String(s.activeDetailId);
+    var box = document.createElement('div');
+    box.className = 'bx' + (active ? ' on' : '');
+    box.style.left = (r.x * 100) + '%';
+    box.style.top = (r.y * 100) + '%';
+    box.style.width = (r.width * 100) + '%';
+    box.style.height = (r.height * 100) + '%';
+    box.dataset.id = d.id;
+    var lab = document.createElement('span');
+    lab.className = 'bx-lab';
+    lab.textContent = (i + 1) + ' · ' + d.title;
+    box.appendChild(lab);
+    if (active) {
+      ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function (h) {
+        var el = document.createElement('i');
+        el.className = 'h ' + h;
+        el.dataset.h = h;
+        box.appendChild(el);
+      });
+    }
+    ov.appendChild(box);
+  });
+  wrap.appendChild(ov);
+  bindBoxEditor(wrap);
+}
+function bindBoxEditor(wrap) {
+  var ov = document.getElementById('wsEdit');
+  if (!ov) return;
+  ov.querySelectorAll('.bx').forEach(function (box) {
+    box.onpointerdown = function (e) {
+      e.preventDefault();
+      var mode = 'move';
+      var h = e.target.closest('.h');
+      if (h) mode = h.dataset.h;
+      var id = Number(box.dataset.id);
+      if (String(id) !== String(studio.activeDetailId)) {
+        studio.activeDetailId = id;
+        renderDetailsPanel();
+        paintBoxEditor();
+        var nb = document.querySelector('#wsEdit .bx.on');
+        if (nb) startBoxDrag(wrap, nb, studio.details.find(function (x) { return x.id === id; }), mode, e);
+        return;
+      }
+      startBoxDrag(wrap, box, studio.details.find(function (x) { return x.id === id; }), mode, e);
+    };
+  });
+}
+function startBoxDrag(wrap, box, d, mode, e) {
+  if (!d || !d.region) return;
+  var r = d.region;
+  var start = { x: r.x, y: r.y, w: r.width, h: r.height };
+  function rect() { return wrap.getBoundingClientRect(); }
+  var rect0 = rect();
+  var px = (e.clientX - rect0.left) / rect0.width;
+  var py = (e.clientY - rect0.top) / rect0.height;
+  var saved = null;
+  function round4(v) { return Math.round(v * 10000) / 10000; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function apply(cx, cy) {
+    var rc = rect();
+    var dx = (cx - rc.left) / rc.width - px;
+    var dy = (cy - rc.top) / rc.height - py;
+    var x = start.x, y = start.y, w = start.w, h = start.h;
+    var MIN = 0.03;
+    if (mode === 'move') {
+      x = clamp(start.x + dx, 0, 1 - w);
+      y = clamp(start.y + dy, 0, 1 - h);
+    } else {
+      if (mode.indexOf('w') >= 0) { var nxl = clamp(start.x + dx, 0, start.x + start.w - MIN); w = start.x + start.w - nxl; x = nxl; }
+      if (mode.indexOf('e') >= 0) { w = clamp(start.w + dx, MIN, 1 - start.x); }
+      if (mode.indexOf('n') >= 0) { var nyt = clamp(start.y + dy, 0, start.y + start.h - MIN); h = start.y + start.h - nyt; y = nyt; }
+      if (mode.indexOf('s') >= 0) { h = clamp(start.h + dy, MIN, 1 - start.y); }
+    }
+    box.style.left = (x * 100) + '%';
+    box.style.top = (y * 100) + '%';
+    box.style.width = (w * 100) + '%';
+    box.style.height = (h * 100) + '%';
+    saved = { x: round4(x), y: round4(y), width: round4(w), height: round4(h) };
+  }
+  function up() {
+    window.removeEventListener('pointermove', mv);
+    window.removeEventListener('pointerup', up);
+    if (saved) saveBoxRegion(d.id, saved);
+  }
+  function mv(ev) { ev.preventDefault(); apply(ev.clientX, ev.clientY); }
+  window.addEventListener('pointermove', mv);
+  window.addEventListener('pointerup', up);
+  apply(e.clientX, e.clientY);
+}
+function saveBoxRegion(detailId, region) {
+  patch('/api/details/' + detailId, region).then(function () {
+    var idx = studio.details.findIndex(function (x) { return x.id === detailId; });
+    if (idx >= 0) studio.details[idx].region = region;
+    toast('Riquadro aggiornato e salvato', true);
+  }).catch(function (e) { toast('Salvataggio riquadro fallito: ' + e.message); });
 }
 function paintViewerSpot() {
   if (!document.getElementById('vwSpot')) return;

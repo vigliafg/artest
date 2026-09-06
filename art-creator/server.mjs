@@ -198,6 +198,56 @@ function handleApi(req, res, urlPath) {
     return json(res, 200, { details: listDetails(parts[2]) });
   }
 
+  // PATCH /api/details/:id — aggiorna regione (e titolo/categoria) di un dettaglio;
+  // se cambia la regione rigenera subito l'immagine annotata (riquadri + didascalie) nel DB.
+  if (method === 'PATCH' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'details') {
+    return readBody(req).then(async (input) => {
+      const detailId = Number(parts[2]);
+      const detail = getDetail(detailId);
+      if (!detail) return err(res, 404, 'Dettaglio non trovato');
+      const patch = {};
+      if (input.title !== undefined) patch.title = String(input.title).slice(0, 120);
+      if (input.category !== undefined) patch.category = String(input.category).slice(0, 80);
+      const region = (input && typeof input === 'object' && input.region && typeof input.region === 'object') ? input.region : (input || {});
+      let regionChanged = false;
+      for (const k of ['x', 'y', 'width', 'height']) {
+        if (region[k] !== undefined && region[k] !== null && region[k] !== '') {
+          const v = Number(region[k]);
+          if (!Number.isFinite(v)) throw new Error('Coordinata ' + k + ' non valida');
+          patch[k] = v;
+          regionChanged = true;
+        }
+      }
+      if (regionChanged) {
+        const orig = detail.region;
+        let x = patch.x !== undefined ? patch.x : orig.x;
+        let y = patch.y !== undefined ? patch.y : orig.y;
+        let w = patch.width !== undefined ? patch.width : orig.width;
+        let h = patch.height !== undefined ? patch.height : orig.height;
+        x = Math.max(0, Math.min(1 - 0.03, x));
+        y = Math.max(0, Math.min(1 - 0.03, y));
+        w = Math.max(0.03, Math.min(1 - x, w));
+        h = Math.max(0.03, Math.min(1 - y, h));
+        x = Math.max(0, Math.min(1 - w, x));
+        y = Math.max(0, Math.min(1 - h, y));
+        Object.assign(patch, { x, y, width: w, height: h });
+      }
+      const saved = updateDetail(detailId, patch);
+      let annotated = null;
+      if (regionChanged) {
+        try {
+          const artwork = getArtwork(detail.artworkId);
+          const ann = await renderAnnotated(artwork);
+          if (ann) {
+            setAnnotatedImage(detail.artworkId, ann.data, 'image/jpeg');
+            annotated = { url: '/api/artworks/' + detail.artworkId + '/image-annotated', boxes: ann.boxes, captions: ann.captions };
+          }
+        } catch (e) { console.error('ERR annotate (PATCH dettaglio):', e); }
+      }
+      json(res, 200, { detail: saved, annotated });
+    }).catch(e => err(res, 400, e.message));
+  }
+
   // POST /api/artworks/:id/generate/overview  — genera testo opera+artista
   if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'generate' && parts[4] === 'overview') {
     return readBody(req).then(async () => {
