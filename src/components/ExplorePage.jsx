@@ -1,101 +1,129 @@
+// Presenta la scheda didattica salvata nel database (art-creator): le sezioni
+// vengono lette dal contenuto pubblicato, senza chiamate live al modello.
+// I due livelli (Scuola secondaria / Approfondimento) mostrano solo le proprie sezioni.
+
+var LEVELS = ['Scuola secondaria', 'Approfondimento'];
+
+function stripLookPrefix(text) {
+  // I testi del DB aprono spesso con un invito completo ("Guarda ancora…",
+  // "Torna a guardare…", "Guarda di nuovo…"): il box aggiunge già l'etichetta
+  // "Guarda ancora:", quindi rimuoviamo il preambolo per non duplicarlo.
+  return String(text || '')
+    .replace(/^[\"'\u2019\u2018 ]*guarda ancora[\"'\u2019\u2018 :.!-]*/i, '')
+    .replace(/^[\"'\u2019\u2018 ]*torna a guardare[\"'\u2019\u2018 ]*(ancora)?[\"'\u2019\u2018 :.!-]*/i, '')
+    .replace(/^[\"'\u2019\u2018 ]*guarda di nuovo[\"'\u2019\u2018 :.!-]*/i, '')
+    .trim();
+}
+
 function ExplorePage({ artwork, onBack }) {
-  const [selectedHotspot, setSelectedHotspot] = React.useState(null);
-  const [selection, setSelection] = React.useState(null);
-  const [analyses, setAnalyses] = React.useState({});
-  const [loading, setLoading] = React.useState(false);
-  const [feedbacks, setFeedbacks] = React.useState([]);
-  const requestId = React.useRef(0);
+  var detailsById = React.useMemo(function () {
+    var map = {};
+    (artwork.details || []).forEach(function (d) { map[String(d.id)] = d; });
+    return map;
+  }, [artwork.id]);
 
-  const LEVELS = ['Scuola secondaria', 'Approfondimento'];
+  var [selected, setSelected] = React.useState(null);           // hotspot selezionato
+  var [analyses, setAnalyses] = React.useState({});             // { 'Scuola secondaria': result, 'Approfondimento': result }
+  var [missingContent, setMissingContent] = React.useState(null); // hotspot senza contenuto nel DB
 
-  function createSelectionImage(nextSelection) {
-    return new Promise(function (resolve) {
-      var image = new Image();
-      image.onload = function () {
-        try {
-          var padding = 0.025;
-          var x = Math.max(0, nextSelection.x - padding);
-          var y = Math.max(0, nextSelection.y - padding);
-          var right = Math.min(1, nextSelection.x + (nextSelection.width || 0.12) + padding);
-          var bottom = Math.min(1, nextSelection.y + (nextSelection.height || 0.12) + padding);
-          var sourceWidth = Math.max(1, Math.round((right - x) * image.naturalWidth));
-          var sourceHeight = Math.max(1, Math.round((bottom - y) * image.naturalHeight));
-          var scale = Math.min(1, 900 / Math.max(sourceWidth, sourceHeight));
-          var canvas = document.createElement('canvas');
-          canvas.width = Math.max(1, Math.round(sourceWidth * scale));
-          canvas.height = Math.max(1, Math.round(sourceHeight * scale));
-          canvas.getContext('2d').drawImage(image, Math.round(x * image.naturalWidth), Math.round(y * image.naturalHeight), sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
-        } catch (_error) { resolve(null); }
+  function buildStoredResult(detail) {
+    var levels = {};
+    LEVELS.forEach(function (level) {
+      var tab = level === 'Approfondimento' ? 'approfondimento' : 'studio';
+      var row = detail[tab];
+      var c = row || {};
+      var label = level === 'Approfondimento'
+        ? 'Approfondimento · scheda didattica'
+        : 'Studio del dettaglio · scheda didattica';
+      var content = {
+        observation: String(c.observation || '').trim(),
+        meaning: String(c.meaning || '').trim(),
+        relation: String(c.relation || '').trim(),
+        curiosity: String(c.curiosity || '').trim(),
+        comparisons: level === 'Approfondimento' ? String(c.comparisons || '').trim() : '',
+        openQuestions: level === 'Approfondimento' ? String(c.openQuestions || '').trim() : '',
+        technique: level === 'Approfondimento' ? String(c.technique || '').trim() : '',
+        lookAgain: stripLookPrefix(String(c.lookAgain || '').trim())
       };
-      image.onerror = function () { resolve(null); };
-      image.src = artwork.image;
+      levels[level] = {
+        id: 'stored-' + detail.id + '-' + tab,
+        status: 'completed',
+        stored: true,
+        title: detail.title,
+        confidence: { level: 'high', label: label, tone: 'cool' },
+        content: content,
+        sources: (artwork.sources || []).filter(function (s) { return s && s.url; }),
+        disclaimer: level === 'Approfondimento'
+          ? 'Testi della scheda didattica (art-creator): confronti, questioni aperte e tecnica pittorica specifici di questo dettaglio, verificati in fase di pubblicazione.'
+          : 'Testi della scheda didattica (art-creator): cosa vedi, cosa significa e il legame con gli altri dettagli dell’opera, verificati in fase di pubblicazione.'
+      };
     });
+    return levels;
   }
 
-  function buildErrorResult(error, hotspot) {
-    return {
-      id: 'error-' + Date.now(),
-      title: hotspot ? hotspot.title : 'Area selezionata',
-      confidence: { label: 'Analisi non disponibile', tone: 'warm' },
-      content: { observation: error.message, meaning: '', relation: '', curiosity: '', comparisons: '', openQuestions: '', lookAgain: '' },
-      sources: artwork.sources,
-      disclaimer: 'Controlla la configurazione del backend OpenRouter e riprova.'
-    };
+  function selectDetail(hotspot) {
+    if (!hotspot) return;
+    var detail = detailsById[String(hotspot.id || hotspot.hotspotId || hotspot.title)] || null;
+    if (!detail) detail = (artwork.details || []).find(function (d) { return d.title === hotspot.title; }) || null;
+    setSelected(hotspot);
+    setMissingContent(null);
+    if (detail) {
+      setAnalyses(buildStoredResult(detail));
+    } else {
+      setAnalyses({});
+      setMissingContent(hotspot.title || 'Questo dettaglio');
+    }
   }
 
-  // Lancio i due livelli in parallelo: una chiamata per "Scuola secondaria"
-  // e una per "Approfondimento", così entrambe le tab si popolano insieme.
-  function runAnalysis(nextSelection, hotspot) {
-    const currentRequestId = requestId.current + 1;
-    requestId.current = currentRequestId;
-    setSelectedHotspot(hotspot || null);
-    setSelection({ ...nextSelection, hotspotTitle: hotspot ? hotspot.title : 'Area selezionata' });
-    setAnalyses({});
-    setLoading(true);
-    createSelectionImage(nextSelection).then(function (selectionImage) {
-      return Promise.all(LEVELS.map(function (level) {
-        return window.AnalysisService.analyze(artwork, nextSelection, level, selectionImage)
-          .then(function (result) { return { level: level, result: result }; })
-          .catch(function (error) { return { level: level, result: buildErrorResult(error, hotspot) }; });
-      }));
-    }).then(function (entries) {
-      if (currentRequestId !== requestId.current) return;
-      var byLevel = {};
-      entries.forEach(function (entry) { byLevel[entry.level] = entry.result; });
-      setAnalyses(byLevel);
-      setLoading(false);
-    });
-  }
-
+  // La didascalia attiva funziona come toggle (come in art-creator): ripremendola
+  // si torna all'immagine completa a colori, senza box e senza selezione.
   function chooseHotspot(hotspot) {
-    runAnalysis({ type: 'hotspot', hotspotId: hotspot.id, ...hotspot.region }, hotspot);
+    if (selected && String(selected.id) === String(hotspot.id)) {
+      setSelected(null);
+      setMissingContent(null);
+      setAnalyses({});
+      return;
+    }
+    selectDetail(hotspot);
   }
 
-  function chooseFree(point) {
-    runAnalysis({ type: 'free', x: point.x, y: point.y, width: 0.12, height: 0.12 }, null);
-  }
-
-  function retry() {
-    if (selection) runAnalysis(selection, selectedHotspot);
-  }
-
-  function handleFeedback(result, value) {
-    setFeedbacks(function (current) { return current.concat({ analysisId: result.id, value: value }); });
-  }
+  var headerNote = artwork.overview && artwork.overview.painting ? '' : '';
 
   return (
     <main className="explore-page">
       <header className="explore-header">
         <button className="back-button" onClick={onBack}><span className="back-icon">←</span> Torna alla collezione</button>
         <div className="explore-progress"><span>01</span><i></i><span>Esplorazione guidata</span></div>
-        <button className="header-info" aria-label="Informazioni sull’esperienza"><Icon name="info" size={18} /></button>
+        <span className="header-info" aria-hidden="true"><Icon name="sparkle" size={17} /></span>
       </header>
-      <section className="explore-intro"><div><span className="eyebrow">{artwork.period}</span><h1>{artwork.title}</h1><p>{artwork.artist} <span>·</span> {artwork.date} <span>·</span> {artwork.institution}</p></div><div className="explore-tag"><Icon name="sparkle" size={15} /> Esplora i dettagli</div></section>
+      <section className="explore-intro">
+        <div>
+          <span className="eyebrow">{artwork.period || 'Scheda didattica'}</span>
+          <h1>{artwork.title}</h1>
+          <p>{artwork.artist}{artwork.date ? <span>·</span> : null}{artwork.date}{artwork.institution ? <span>·</span> : null}{artwork.institution}</p>
+        </div>
+        <div className="explore-tag"><Icon name="sparkle" size={15} /> Contenuti dalla scheda didattica{headerNote}</div>
+      </section>
+
       <ArtworkOverview artwork={artwork} />
+
       <section className="exploration-layout">
-        <div className="viewer-column"><ArtworkViewer artwork={artwork} selectedHotspotId={selectedHotspot && selectedHotspot.id} onHotspotSelect={chooseHotspot} onFreeSelect={chooseFree} /><div className="rights-line">{artwork.rights}</div></div>
-        <AnalysisPanel artwork={artwork} selection={selection} analyses={analyses} loading={loading} onRetry={retry} onFeedback={handleFeedback} onHotspotSelect={chooseHotspot} />
+        <div className="viewer-column">
+          <ArtworkViewer
+            artwork={artwork}
+            selectedHotspotId={selected && selected.id}
+            onHotspotSelect={chooseHotspot}
+          />
+          <div className="rights-line">{artwork.rights}</div>
+        </div>
+        <AnalysisPanel
+          artwork={artwork}
+          selectedHotspot={selected}
+          storedAnalyses={analyses}
+          storedOnly={true}
+          missingContent={missingContent}
+          onHotspotSelect={chooseHotspot}
+        />
       </section>
     </main>
   );

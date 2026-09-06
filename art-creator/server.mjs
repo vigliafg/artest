@@ -6,18 +6,19 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { extname, join, normalize, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initSchema, db, UPLOAD_DIR, ROOT as APP_ROOT } from './db.mjs';
+import { initSchema, getDb, UPLOAD_DIR, ROOT as APP_ROOT } from './db.mjs';
 import {
   createArtwork, getArtwork, listArtworks, updateArtwork, deleteArtwork,
   addDetail, listDetails, getDetail, replaceDetails, updateDetail,
   saveDetailContent, getDetailContent,
   saveOverview, getOverview,
   addSource, listSources, getFullArtwork, approveArtwork, publishArtwork,
-  getArtworkImageData, setAnnotatedImage
+  getArtworkImageData, setAnnotatedImage,
+  replaceSimilarWorks, listSimilarWorks, getSimilarImage, updateSimilarWork, clearSimilarImage
 } from './db.mjs';
 import { callModel, VISION_MODEL, TEXT_MODEL, getOpenRouterApiKey,
-  buildVisionPrompt, buildOverviewPrompt, buildTextPrompt,
-  normalizeAnalysis, normalizeOverview } from '../server.mjs';
+  buildVisionPrompt, buildOverviewPrompt, buildTextPrompt, buildSimilarPrompt,
+  normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImages } from '../server.mjs';
 
 const execFileAsync = promisify(execFile);
 const PORT = Number(process.env.ART_CREATOR_PORT || 8100);
@@ -101,6 +102,20 @@ function handleApi(req, res, urlPath) {
     full.imageUrl = '/api/artworks/' + full.id + '/image';
     full.annotatedImageUrl = full.hasAnnotated ? '/api/artworks/' + full.id + '/image-annotated' : null;
     return json(res, 200, full);
+  }
+
+  // GET /api/artworks/:id/similar — elenco opere simili
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'similar') {
+    return json(res, 200, { works: listSimilarWorks(parts[2]) });
+  }
+
+  // GET /api/artworks/:id/similar/:sid/image — BLOB immagine opera simile
+  if (method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'similar' && parts[5] === 'image') {
+    const img = getSimilarImage(parts[2], Number(parts[4]));
+    if (!img) return err(res, 404, 'Immagine non disponibile');
+    const buf = Buffer.from(img.data);
+    res.writeHead(200, { 'Content-Type': img.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    return res.end(buf);
   }
 
   // GET /api/artworks/:id/image | /image-annotated — BLOB dal DB (immagine pulita / annotata)
@@ -203,6 +218,66 @@ function handleApi(req, res, urlPath) {
     }).catch(e => { console.error('ERR overview:', e); err(res, 500, e.message); });
   }
 
+  // POST /api/artworks/:id/generate/similar — 10 opere con lo stesso soggetto + immagini (Commons/MET, BLOB)
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'generate' && parts[4] === 'similar') {
+    return readBody(req).then(async () => {
+      const artwork = getArtwork(parts[2]);
+      if (!artwork) return err(res, 404, 'Opera non trovata');
+      const apiKey = getOpenRouterApiKey();
+      if (!apiKey) return err(res, 503, 'OPENROUTER_API_KEY non configurata');
+      const input = { artwork, learningLevel: 'Approfondimento', sources: listSources(artwork.id) };
+      const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSimilarPrompt(input) }], apiKey);
+      const works = normalizeSimilar(raw.data, input);
+      const resolved = await resolveSimilarImages(works);
+      // download di ogni thumbnail -> BLOB nel DB (immagini locali, offline-safe)
+      for (const w of resolved) {
+        if (w.imageStatus === 'ok' && w.imageUrl) {
+          try {
+            const resp = await fetch(w.imageUrl, { headers: { 'User-Agent': 'artest-didattico/1.0 (local)' }, redirect: 'follow' });
+            if (resp.ok) {
+              const buf = Buffer.from(await resp.arrayBuffer());
+              if (buf.length > 0) { w.imageData = buf; w.imageMime = String(resp.headers.get('content-type') || 'image/jpeg').split(';')[0]; }
+              else w.imageStatus = 'failed';
+            } else w.imageStatus = 'failed';
+          } catch { w.imageStatus = 'failed'; }
+          await new Promise(r => setTimeout(r, 150));
+        }
+      }
+      const saved = replaceSimilarWorks(artwork.id, resolved);
+      json(res, 200, { works: saved });
+    }).catch(e => { console.error('ERR genSimilar:', e); err(res, 500, e.message); });
+  }
+
+  // PATCH /api/artworks/:id/similar/:sid — revisione utente (campi + URL immagine con re-download)
+  if (method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'similar') {
+    return readBody(req).then(async (input) => {
+      const similarId = Number(parts[4]);
+      const patch = {};
+      for (const k of ['title', 'artist', 'date', 'museum', 'caption', 'sortOrder']) {
+        if (input[k] !== undefined) patch[k] = String(input[k]);
+      }
+      if (input.sortOrder !== undefined) patch.sortOrder = Number(input.sortOrder);
+      let saved = updateSimilarWork(similarId, patch);
+      if (input.imageUrl !== undefined) {
+        const url = String(input.imageUrl).trim();
+        if (url === '') {
+          saved = clearSimilarImage(similarId);
+        } else {
+          saved = updateSimilarWork(similarId, { imageUrl: url, imagePage: input.imagePage !== undefined ? String(input.imagePage) : saved.imagePage });
+          try {
+            const resp = await fetch(url, { headers: { 'User-Agent': 'artest-didattico/1.0 (local)' }, redirect: 'follow' });
+            if (resp.ok) {
+              const buf = Buffer.from(await resp.arrayBuffer());
+              if (buf.length > 0) saved = updateSimilarWork(similarId, { imageData: buf, imageMime: String(resp.headers.get('content-type') || 'image/jpeg').split(';')[0], imageStatus: 'ok' });
+              else saved = updateSimilarWork(similarId, { imageStatus: 'failed' });
+            } else saved = updateSimilarWork(similarId, { imageStatus: 'failed' });
+          } catch { saved = updateSimilarWork(similarId, { imageStatus: 'failed' }); }
+        }
+      }
+      json(res, 200, { work: saved });
+    }).catch(e => err(res, 400, e.message));
+  }
+
   // POST /api/artworks/:id/generate/meta — riconosce l'opera e propone i metadati
   if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'generate' && parts[4] === 'meta') {
     return readBody(req).then(async () => {
@@ -245,7 +320,7 @@ function handleApi(req, res, urlPath) {
       const runTab = async (tab, sharedVisionData) => {
         const level = tab === 'approfondimento' ? 'Approfondimento' : 'Scuola secondaria';
         const result = await analyzeDetail({ artwork, detail, selectionImage: input.selectionImage || null, fullImage, level, apiKey, sharedVisionData });
-        saveDetailContent(detailId, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-2' });
+        saveDetailContent(detailId, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-3' });
         return getDetailContent(detailId, tab);
       };
       if (mode === 'both') {
@@ -311,7 +386,7 @@ function handleApi(req, res, urlPath) {
       const existing = getDetailContent(detailId, tab);
       if (!existing) return err(res, 404, 'Contenuto non trovato');
       const merged = {};
-      for (const key of ['observation', 'meaning', 'relation', 'curiosity', 'comparisons', 'openQuestions', 'lookAgain']) {
+      for (const key of ['observation', 'meaning', 'relation', 'curiosity', 'comparisons', 'openQuestions', 'technique', 'lookAgain']) {
         merged[key] = input[key] !== undefined ? String(input[key]) : existing.content[key];
       }
       saveDetailContent(detailId, tab, merged, { status: input.status || existing.status, model: existing.model, promptVersion: existing.promptVersion });
@@ -468,7 +543,7 @@ const server = createServer((req, res) => {
       visionModel: VISION_MODEL,
       textModel: TEXT_MODEL,
       artworks: full,
-      database: db ? 'sqlite' : null
+      database: getDb() ? 'sqlite' : null
     });
   }
 

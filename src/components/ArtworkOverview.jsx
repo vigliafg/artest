@@ -1,39 +1,42 @@
-const overviewCache = {};
+// Presentazione storico-artistica sopra il viewer.
+// Quando l'opera arriva dal DB di art-creator porta già overview e opere simili
+// (array simile al risultato del servizio AI): li mostriamo senza chiamate live.
 
-function countWords(text) {
-  return String(text || '').split(/\s+/).filter(Boolean).length;
+function countWords(text) { return String(text || '').split(/\s+/).filter(Boolean).length; }
+
+function SimThumb({ work }) {
+  const [failed, setFailed] = React.useState(false);
+  if (failed || !work.imageUrl) {
+    return <div className="sim-ph-lg">🖼 immagine non disponibile</div>;
+  }
+  return <img className="sim-thumb-lg" src={work.imageUrl} alt="" loading="lazy" onError={function () { setFailed(true); }} />;
 }
 
 function ArtworkOverview({ artwork }) {
-  const [state, setState] = React.useState({ status: 'loading', data: null, error: null });
+  const [activeTab, setActiveTab] = React.useState('overview');
   const [collapsed, setCollapsed] = React.useState(false);
-  const mounted = React.useRef(true);
-  const cacheKey = artwork.id;
+  const trackRef = React.useRef(null);
 
-  function load() {
-    setState({ status: 'loading', data: null, error: null });
-    window.AnalysisService.overview(artwork, 'Scuola secondaria').then(function (result) {
-      if (!mounted.current) return;
-      overviewCache[cacheKey] = result;
-      setState({ status: 'ready', data: result, error: null });
-    }).catch(function (error) {
-      if (!mounted.current) return;
-      setState({ status: 'error', data: null, error: (error && error.message) || 'La presentazione non è disponibile.' });
-    });
+  // Dati già pronti nell'oggetto opera (schema del DB di art-creator)…
+  const hasStoredOverview = Boolean(artwork.overview && artwork.overview.painting);
+  const overview = hasStoredOverview ? artwork.overview : null;
+  // …oppure, per retro-compatibilità, i campi del servizio AI in linea.
+  const fallbackOverview = artwork.overviewService ? artwork.overviewService : null;
+  const data = overview || fallbackOverview;
+  const similarWorks = Array.isArray(artwork.similarWorks) ? artwork.similarWorks : [];
+  const sources = (artwork.sources || []).filter(s => s && s.url);
+  const disclaimer = hasStoredOverview
+    ? 'Presentazione redatta nella scheda didattica di art-creator (conoscenza del modello verificata in fase di pubblicazione).'
+    : (fallbackOverview && fallbackOverview.disclaimer) || '';
+
+  function scrollSim(dx) {
+    const el = trackRef.current;
+    if (el) el.scrollBy({ left: dx, behavior: 'smooth' });
   }
 
-  React.useEffect(function () {
-    mounted.current = true;
-    if (overviewCache[cacheKey]) {
-      setState({ status: 'ready', data: overviewCache[cacheKey], error: null });
-    } else {
-      load();
-    }
-    return function () { mounted.current = false; };
-  }, [cacheKey]);
-
-  const data = state.data;
-  const wordCount = data ? countWords(data.content.painting) + countWords(data.content.artist) : 0;
+  const wordCount = data ? countWords(data.painting || data.content?.painting) + countWords(data.artist || data.content?.artist) : 0;
+  const painting = data ? (data.painting || data.content?.painting || '') : '';
+  const artistText = data ? (data.artist || data.content?.artist || '') : '';
 
   return (
     <section className="overview-block" aria-label="Presentazione storico-artistica dell’opera e dell’artista">
@@ -42,52 +45,95 @@ function ArtworkOverview({ artwork }) {
           <span className="eyebrow">Per iniziare</span>
           <h2>L’opera e il suo autore</h2>
         </div>
-        {state.status === 'ready' && data && (
+        {data ? (
           <button className="overview-toggle" aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
             {collapsed ? 'Mostra il contesto' : 'Nascondi il contesto'}
             <Icon name="chevron" size={15} />
           </button>
-        )}
+        ) : null}
       </div>
 
-      {state.status === 'loading' && (
-        <div className="overview-card overview-loading" aria-live="polite">
-          <div className="loading-orbit"><span></span><span></span><span></span></div>
-          <h3>Sto preparando la presentazione…</h3>
-          <p>Ricostruisco il contesto storico-artistico dell’opera e dell’artista. L’esplorazione resta disponibile qui sotto.</p>
-        </div>
-      )}
+      <div className="overview-tabs" role="tablist" aria-label="Presentazione e opere simili">
+        {[['overview', 'Presentazione'], ['similar', 'Opere simili']].map(tab => (
+          <button
+            key={tab[0]}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab[0]}
+            className={'overview-tab' + (activeTab === tab[0] ? ' active' : '')}
+            onClick={() => setActiveTab(tab[0])}
+          >
+            {tab[1]}
+          </button>
+        ))}
+      </div>
 
-      {state.status === 'error' && (
+      {activeTab === 'overview' && !data && (
         <div className="overview-card overview-error" aria-live="polite">
           <Icon name="info" size={22} />
           <h3>Presentazione non disponibile</h3>
-          <p>{state.error}</p>
-          <button className="secondary-button" onClick={load}>Riprova</button>
+          <p>Questa scheda non ha ancora un testo introduttivo. Pubblica l’opera da art-creator per vederlo qui.</p>
         </div>
       )}
 
-      {state.status === 'ready' && data && !collapsed && (
+      {activeTab === 'overview' && data && !collapsed && (
         <div className="overview-card overview-ready">
           <div className="overview-grid">
-            <div className="overview-col">
-              <h3>Il dipinto</h3>
-              <p>{data.content.painting}</p>
-            </div>
-            <div className="overview-col">
-              <h3>L’artista</h3>
-              <p>{data.content.artist}</p>
-            </div>
+            {painting ? (
+              <div className="overview-col">
+                <h3>Il dipinto</h3>
+                <p>{painting}</p>
+              </div>
+            ) : null}
+            {artistText ? (
+              <div className="overview-col">
+                <h3>L’artista</h3>
+                <p>{artistText}</p>
+              </div>
+            ) : null}
           </div>
           <div className="overview-foot">
             <span className="overview-count">{wordCount} parole</span>
             <div className="overview-sources">
-              {(data.sources || []).map(function (source) {
-                return <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} <Icon name="external" size={11} /></a>;
-              })}
+              {sources.map(source => (
+                <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title} <Icon name="external" size={11} /></a>
+              ))}
             </div>
           </div>
-          <p className="overview-disclaimer">{data.disclaimer}</p>
+          {disclaimer ? <p className="overview-disclaimer">{disclaimer}</p> : null}
+        </div>
+      )}
+
+      {activeTab === 'similar' && (
+        <div className="overview-card overview-ready">
+          {similarWorks.length === 0 ? (
+            <p className="overview-loading">Nessuna opera simile nella scheda didattica.</p>
+          ) : (
+            <div className="sim-carousel">
+              <button className="car-arrow" onClick={() => scrollSim(-340)} aria-label="Scorri indietro">‹</button>
+              <div className="sim-track" ref={trackRef}>
+                <div className="sim-track-inner">
+                  {similarWorks.map(work => (
+                    <figure className="sim-slide" key={String(work.title) + '-' + String(work.artist) + '-' + String(work.id || '')}>
+                      {work.sourceUrl ? (
+                        <a href={work.sourceUrl} target="_blank" rel="noreferrer"><SimThumb work={work} /></a>
+                      ) : (
+                        <SimThumb work={work} />
+                      )}
+                      <figcaption>
+                        <strong>{work.title}</strong>
+                        {work.artist ? <span>{work.artist}{work.date ? ' · ' + work.date : ''}</span> : null}
+                        {work.museum ? <small>{work.museum}</small> : null}
+                        {work.caption ? <p>{work.caption}</p> : null}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+              <button className="car-arrow" onClick={() => scrollSim(340)} aria-label="Scorri avanti">›</button>
+            </div>
+          )}
+          <p className="overview-disclaimer">Opere con lo stesso soggetto nella storia dell’arte, selezionate nella scheda didattica. Immagini in pubblico dominio (Wikimedia Commons / MET).</p>
         </div>
       )}
     </section>

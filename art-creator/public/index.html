@@ -86,6 +86,33 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .log-line.done .dot{background:var(--green)}
 .spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--coral);border-radius:50%;animation:spin .8s linear infinite;display:inline-block;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
+.pipe-card{border-left:4px solid var(--coral);margin-bottom:18px}
+.pipe-card.ok{border-left-color:var(--green);background:#fbfdf9}
+.pipe-card.err{border-left-color:#b03a2e}
+.pipe-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.pipe-pct{font-size:30px;font-weight:800;font-family:'Playfair Display',Georgia,serif;color:var(--coral);line-height:1}
+.pipe-card.ok .pipe-pct{color:var(--green)}
+.pipe-activity{font-size:12px;color:var(--ink);display:flex;align-items:center;gap:8px;margin-top:4px;font-weight:600;line-height:1.5}
+.pipe-err{font-size:12px;color:#a33a2a;background:#fbeae7;border-radius:8px;padding:9px 12px;line-height:1.5}
+.pipe-done-note{font-size:12px;color:var(--green);margin:8px 0 0;line-height:1.6}
+.pipe-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.pipe-phases{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;border-top:1px dashed var(--line);padding-top:12px}
+.pipe-chip{font-size:10px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--line);padding:5px 10px;border-radius:20px;opacity:.75}
+.pipe-chip.act{color:var(--coral);border-color:var(--coral);opacity:1;background:#fff9f5}
+.pipe-chip.done{color:#47715f;border-color:#cfe5da;background:#eef6f1;opacity:1}
+.img-panel{display:grid;grid-template-columns:minmax(0,4fr) minmax(160px,1fr);gap:14px;align-items:start}
+.spot-wrap{position:relative;border:1px solid #e5e2dc;border-radius:12px;overflow:hidden;background:#eee9e1;line-height:0}
+.spot-wrap canvas{width:100%;height:auto;display:block}
+.cap-rail{background:var(--white);border:1px solid #e5e2dc;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:7px;max-height:540px;overflow:auto}
+.rail-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:var(--coral);margin:0 2px 2px}
+.cap{display:flex;gap:9px;align-items:flex-start;text-align:left;width:100%;border:1px solid var(--line);background:var(--white);border-radius:9px;padding:9px 10px;cursor:pointer;color:var(--ink);transition:.15s}
+.cap:hover{border-color:var(--coral);background:#fff9f5}
+.cap .num{color:var(--coral);font-weight:700;font-size:12px;min-width:16px;padding-top:1px}
+.cap .cap-t{font-size:11.5px;line-height:1.35;font-weight:600}
+.cap .cap-c{display:block;font-size:9px;color:var(--muted);font-weight:500;margin-top:2px;text-transform:uppercase;letter-spacing:.06em}
+.cap.on{border-color:var(--coral);background:#fff9f5;box-shadow:inset 0 -2px 0 var(--coral)}
+.spot-hint{font-size:10px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+@media(max-width:760px){.img-panel{grid-template-columns:1fr}.cap-rail{max-height:200px}}
 /* feedback salvataggio */
 .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:#1d5a43;color:#fff;padding:15px 24px;border-radius:30px;font-size:13px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 12px 34px rgba(0,0,0,.25);transition:.35s;z-index:50;pointer-events:none}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -108,6 +135,32 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .empty-state{text-align:center;padding:50px 20px;color:var(--muted)}
 .empty-state h2{color:var(--ink);font-size:26px}
 @media(max-width:900px){.ws-layout,.viewer-layout{grid-template-columns:1fr}.meta-grid,.ov-grid{grid-template-columns:1fr}.app{padding:0 14px 60px}}
+/* ---- Passo 4 · Opere simili ---- */
+.sim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.sim-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--white)}
+.sim-thumb{width:100%;height:150px;object-fit:cover;display:block;background:#eeeae3}
+.sim-ph{width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#eeeae3;color:var(--muted);font-size:11px;text-align:center;padding:10px;box-sizing:border-box}
+.sim-fields{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.sim-fields label{color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+.sim-fields input,.sim-fields textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:7px 8px;font-size:12px;font-family:inherit;background:var(--white);color:var(--ink);box-sizing:border-box}
+.sim-fields textarea{min-height:52px;resize:vertical}
+.sim-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sim-actions{display:flex;align-items:center;gap:6px;margin-top:6px}
+.sim-status{margin-left:auto;color:var(--muted);font-size:9px}
+/* carousel viewer */
+.sim-carousel{display:flex;align-items:center;gap:8px;padding:6px 0}
+.car-arrow{flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.car-arrow:hover{border-color:var(--coral);color:var(--coral)}
+.sim-track{flex:1;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px}
+.sim-track-inner{display:flex;gap:14px;min-width:max-content}
+.sim-slide{flex:0 0 230px;margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--white);scroll-snap-align:start}
+.sim-slide a{display:block}
+.sim-thumb-lg{width:100%;height:150px;object-fit:cover;display:block;background:#eeeae3}
+.sim-ph-lg{width:100%;height:150px;display:flex;align-items:center;justify-content:center;background:#eeeae3;color:var(--muted);font-size:11px;text-align:center;padding:10px;box-sizing:border-box}
+.sim-slide figcaption{padding:10px 12px}
+.sim-slide figcaption strong{display:block;font-size:13px;line-height:1.3;color:var(--ink)}
+.sim-slide figcaption span,.sim-slide figcaption small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+.sim-slide figcaption p{margin:7px 0 0;color:var(--ink);font-size:11px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -139,9 +192,9 @@ function toast(msg, ok) {
   el.classList.add('show');
   setTimeout(function () { el.classList.remove('show'); }, 4000);
 }
-function sectionOf(tab) { return tab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions']; }
+function sectionOf(tab) { return tab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions', 'technique']; }
 function fieldLabel(key) {
-  return { observation: 'Cosa vedi', meaning: 'Cosa significa', relation: 'In relazione all’opera', curiosity: 'Una curiosità', comparisons: 'Confronti con altre opere', openQuestions: 'Questioni aperte', lookAgain: 'Guarda ancora' }[key] || key;
+  return { observation: 'Cosa vedi', meaning: 'Cosa significa', relation: 'In relazione all’opera', curiosity: 'Una curiosità', comparisons: 'Confronti con altre opere', openQuestions: 'Questioni aperte', technique: 'Tecnica e materia', lookAgain: 'Guarda ancora' }[key] || key;
 }
 function cropDataUrl(imgEl, region, maxSide) {
   return new Promise(function (resolve) {
@@ -229,6 +282,7 @@ function StudioView() {
   this.pendingFile = null;
   this.details = [];
   this.activeDetailId = null;
+  this.spotId = null;
   this.activeTab = 'studio';
   this.genBusy = false;
   this.meta = { title: '', artist: '', date: '', period: '', technique: '', institution: '', location: '' };
@@ -241,14 +295,15 @@ function renderStudio() {
   var html = topbar(s.artworkId ? 'workspace' : 'nuova opera', s.artworkId ? '<button class="btn small" data-nav="home">← Elenco</button>' : '');
   html += '<h1 class="page-title">' + (s.artworkId ? 'Genera la scheda didattica' : 'Nuova opera') + '</h1>';
   html += '<p class="lead">' + (s.artworkId ? 'Rivedi i contenuti proposti dall’AI, correggi se serve e premi “Salva nel database”.' : 'Carica l’immagine del dipinto. Tutto il resto — scheda, dettagli, sezioni — lo propone l’intelligenza artificiale.') + '</p>';
+  html += '<div id="pipelineWrap">' + pipelineCardHtml() + '</div>';
 
   // --- STEP 1: upload ---
   html += '<div class="card" style="margin-bottom:18px"><div class="step-head"><span class="eyebrow">Passo 1 · Immagine</span></div>';
   if (!s.artworkId) {
     html += '<div class="dropzone" id="dz"><div class="dz-icon">🖼</div><p><strong>Clicca o trascina qui l’immagine del dipinto</strong></p><p>JPG, PNG o WebP</p><input type="file" id="file" accept="image/*" hidden /></div>';
   } else {
-    html += '<div class="image-stage" style="max-width:520px"><img id="wsImg" src="' + esc(s.imageUrl) + '" alt="opera" crossorigin="anonymous" /><div id="overlays"></div></div>';
-    html += '<p class="step-note">Rettangoli = dettagli proposti dall’AI. Selezionali nella colonna a destra.</p>';
+    html += '<div class="img-panel"><div class="spot-wrap"><canvas id="wsSpot"></canvas></div><div class="cap-rail" id="wsRail"></div></div>';
+    html += '<p class="spot-hint">L’immagine occupa le fasce 1–4; la fascia 5 a destra elenca le didascalie dei dettagli. Premi una didascalia: quel dettaglio resta a colori, il resto dell’immagine diventa in scala di grigi. Ripremi la didascalia attiva per tornare all’immagine completa.</p>';
   }
   html += '</div>';
 
@@ -268,9 +323,11 @@ function renderStudio() {
       '<button class="btn small primary" id="btnGenAll">⚡ Genera tutte le tab</button></span></div>';
     html += '<div id="detailsArea"></div></div>';
 
-    // --- STEP 4: overview ---
-    html += '<div class="card" style="margin-top:18px"><div class="step-head"><span class="eyebrow">Passo 4 · Presentazione</span>' +
-      '<button class="btn small" id="btnOverview">✨ Genera presentazione</button></div><div id="overviewArea"></div></div>';
+    // --- STEP 4: presentazione + opere simili (due tab) ---
+    html += '<div class="card" style="margin-top:18px"><div class="step-head"><span class="eyebrow">Passo 4 · Presentazione e opere simili</span></div>' +
+      '<div class="content-tabs" id="p4Tabs"><div class="ctab active" data-p4="overview">Presentazione</div><div class="ctab" data-p4="similar">Opere simili</div></div>' +
+      '<div id="overviewArea"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn small" id="btnOverview">✨ Genera presentazione</button></div><div id="overviewContent"></div></div>' +
+      '<div id="similarArea" style="display:none"><div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button class="btn small primary" id="btnSimilar">✨ Genera opere simili</button></div><div id="similarContent"></div></div></div>';
 
     // --- STEP 5: salva ---
     html += '<div style="margin-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
@@ -298,6 +355,20 @@ function bindStudio(s) {
     if (dBtn) dBtn.onclick = function () { runDetails(); };
     var oBtn = document.getElementById('btnOverview');
     if (oBtn) oBtn.onclick = function () { runOverview(); };
+    var simBtn = document.getElementById('btnSimilar');
+    if (simBtn) simBtn.onclick = function () { runSimilar(); };
+    var p4 = appEl.querySelectorAll('[data-p4]');
+    p4.forEach(function (el) {
+      el.onclick = function () {
+        var tab = el.getAttribute('data-p4');
+        p4.forEach(function (x) { x.classList.toggle('active', x === el); });
+        var ov = document.getElementById('overviewArea');
+        var sim = document.getElementById('similarArea');
+        if (ov) ov.style.display = tab === 'overview' ? '' : 'none';
+        if (sim) sim.style.display = tab === 'similar' ? '' : 'none';
+        if (tab === 'similar') renderSimilarPanel();
+      };
+    });
     var sBtn = document.getElementById('btnSave');
     if (sBtn) sBtn.onclick = function () { runSave(); };
     var metaInputs = appEl.querySelectorAll('[data-meta]');
@@ -322,10 +393,8 @@ function handleFile(file) {
       studio.imageUrl = body.artwork.imageUrl;
       toast('Immagine caricata: opera creata', true);
       render();
-      var img = document.getElementById('wsImg');
-      if (img) img.onload = function () { runMeta(); };
-      // auto-proponi metadati dopo il primo render
-      setTimeout(function () { if (studio && studio.artworkId) runMeta(); }, 400);
+      // pipeline automatica: riconoscimento → dettagli → contenuti → presentazione
+      pipeStart();
     }).catch(function (e) { toast(e.message); });
   });
 }
@@ -341,7 +410,7 @@ function refreshMetaFromServer() {
     studio.activeDetailId = studio.activeDetailId || (studio.details[0] ? studio.details[0].id : null);
     renderDetailsPanel();
     renderOverviewPanel();
-    renderOverlays();
+    paintStudioPanel();
   }).catch(function () {});
 }
 function collectMetaFromInputs() {
@@ -395,7 +464,7 @@ function runDetails() {
 }
 function detailReady(detail, tab) {
   var t = detail.tabs && detail.tabs[tab];
-  return t && t.status && t.status !== 'draft' && (t.content.observation || t.content.curiosity || t.content.comparisons || t.content.openQuestions || t.content.meaning || t.content.relation);
+  return t && t.status && t.status !== 'draft' && (t.content.observation || t.content.curiosity || t.content.comparisons || t.content.openQuestions || t.content.meaning || t.content.relation || t.content.technique);
 }
 function allTabGenerated(detail) {
   return detailReady(detail, 'studio') && detailReady(detail, 'approfondimento');
@@ -421,7 +490,9 @@ function renderDetailsPanel() {
   area.querySelectorAll('[data-sel]').forEach(function (el) {
     el.onclick = function () {
       s.activeDetailId = Number(el.getAttribute('data-sel'));
+      s.spotId = s.activeDetailId;
       renderDetailsPanel();
+      paintStudioPanel();
     };
   });
   var genBtn = document.getElementById('btnGenAll');
@@ -438,7 +509,7 @@ function renderDetailEditor(detail) {
   });
   html += '</div>';
   var content = (tabData && tabData.content) || {};
-  var empty = !content.observation && !content.curiosity && !content.comparisons && !content.openQuestions && !content.meaning && !content.relation;
+  var empty = !content.observation && !content.curiosity && !content.comparisons && !content.openQuestions && !content.meaning && !content.relation && !content.technique;
   html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:6px">' +
     '<button class="btn small" data-regen="' + s.activeTab + '">' + (empty ? '✨ Genera questa tab' : '↻ Rigenera questa tab') + '</button></div>';
   if (empty) html += '<p class="step-note">Contenuto non ancora generato. Premi “Genera questa tab” oppure “Genera tutte le tab” sopra.</p>';
@@ -514,7 +585,7 @@ function genTab(detailId, tab, btn) {
   }).catch(function (e) { toast('Generazione fallita: ' + e.message); renderDetailsPanel(); });
 }
 function renderOverviewPanel() {
-  var area = document.getElementById('overviewArea');
+  var area = document.getElementById('overviewContent');
   if (!area) return;
   var full = null;
   api('/api/artworks/' + studio.artworkId).then(function (f) {
@@ -533,6 +604,104 @@ function runOverview() {
     toast('Presentazione generata', true);
     render();
   }).catch(function (e) { toast('Presentazione fallita: ' + e.message); render(); });
+}
+function renderSimilarPanel() {
+  var area = document.getElementById('similarContent');
+  if (!area) return;
+  api('/api/artworks/' + studio.artworkId).then(function (f) {
+    var works = f.similarWorks || [];
+    if (!works.length) { area.innerHTML = '<p class="step-note">Nessuna opera simile ancora. Premi “Genera opere simili”: il modello propone 10 opere con lo stesso soggetto e le immagini vengono cercate su Wikimedia Commons e al MET (download nel database).</p>'; return; }
+    var html = '<div class="sim-grid">';
+    works.forEach(function (w, index) {
+      var img = w.hasImage
+        ? '<img class="sim-thumb" src="/api/artworks/' + f.id + '/similar/' + w.id + '/image" alt="" loading="lazy" />'
+        : '<div class="sim-ph">' + (w.imageStatus === 'failed' ? '⚠ download fallito' : '🖼 immagine mancante') + '</div>';
+      html += '<div class="sim-card" data-sim="' + w.id + '" data-sim-url="' + esc(w.imageUrl || '') + '">' + img +
+        '<div class="sim-fields">' +
+        '<label>Titolo</label><input data-sf="title" value="' + esc(w.title) + '" />' +
+        '<label>Artista</label><input data-sf="artist" value="' + esc(w.artist) + '" />' +
+        '<div class="sim-row"><div><label>Data</label><input data-sf="date" value="' + esc(w.date) + '" /></div><div><label>Museo</label><input data-sf="museum" value="' + esc(w.museum) + '" /></div></div>' +
+        '<label>Perché è simile</label><textarea data-sf="caption">' + esc(w.caption) + '</textarea>' +
+        '<label>URL immagine (opzionale)</label><input data-sf="imageUrl" value="' + esc(w.imageUrl || '') + '" placeholder="lascia vuoto per mantenere quella attuale" />' +
+        '<div class="sim-actions">' +
+        '<button class="btn small" data-sim-up="' + w.id + '"' + (index === 0 ? ' disabled' : '') + '>▲</button>' +
+        '<button class="btn small" data-sim-down="' + w.id + '"' + (index === works.length - 1 ? ' disabled' : '') + '>▼</button>' +
+        '<span class="sim-status">' + (w.status === 'approved' ? 'approvato' : (w.hasImage ? 'con immagine' : (w.imageStatus === 'failed' ? 'download fallito' : 'senza immagine'))) + '</span>' +
+        '</div></div></div>';
+    });
+    html += '</div><div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn small green" id="btnSimSave">💾 Salva opere simili</button></div>';
+    area.innerHTML = html;
+    var save = document.getElementById('btnSimSave');
+    if (save) save.onclick = function () { saveSimilarWorks(); };
+    area.querySelectorAll('[data-sim-up]').forEach(function (b) {
+      b.onclick = function () { moveSimilar(b.getAttribute('data-sim-up'), -1); };
+    });
+    area.querySelectorAll('[data-sim-down]').forEach(function (b) {
+      b.onclick = function () { moveSimilar(b.getAttribute('data-sim-down'), 1); };
+    });
+  }).catch(function () {});
+}
+function runSimilar() {
+  var btn = document.getElementById('btnSimilar');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generazione…'; }
+  post('/api/artworks/' + studio.artworkId + '/generate/similar').then(function () {
+    toast('Opere simili generate con immagini', true);
+    render();
+  }).catch(function (e) { toast('Generazione opere simili fallita: ' + e.message); render(); });
+}
+function saveSimilarWorks() {
+  var area = document.getElementById('similarContent');
+  if (!area) return;
+  var cards = area.querySelectorAll('[data-sim]');
+  var tasks = [];
+  cards.forEach(function (card) {
+    var id = card.getAttribute('data-sim');
+    var patchBody = {};
+    ['title', 'artist', 'date', 'museum', 'caption'].forEach(function (k) {
+      var inp = card.querySelector('[data-sf="' + k + '"]');
+      if (inp) patchBody[k] = inp.value;
+    });
+    var urlInp = card.querySelector('[data-sf="imageUrl"]');
+    if (urlInp && urlInp.value !== card.getAttribute('data-sim-url')) patchBody.imageUrl = urlInp.value;
+    tasks.push(patch('/api/artworks/' + studio.artworkId + '/similar/' + id, patchBody));
+  });
+  Promise.all(tasks).then(function () { toast('Opere simili salvate', true); renderSimilarPanel(); })
+    .catch(function (e) { toast('Salvataggio opere simili fallito: ' + e.message); });
+}
+function moveSimilar(idStr, dir) {
+  api('/api/artworks/' + studio.artworkId).then(function (full) {
+    var works = full.similarWorks || [];
+    var idx = works.findIndex(function (w) { return String(w.id) === String(idStr); });
+    var j = idx + dir;
+    if (idx < 0 || j < 0 || j >= works.length) return;
+    return Promise.all([
+      patch('/api/artworks/' + studio.artworkId + '/similar/' + works[idx].id, { sortOrder: j }),
+      patch('/api/artworks/' + studio.artworkId + '/similar/' + works[j].id, { sortOrder: idx })
+    ]).then(function () { renderSimilarPanel(); });
+  });
+}
+function renderViewerSimilar(full) {
+  var pane = document.getElementById('ovSimilarPane');
+  if (!pane) return;
+  var works = full.similarWorks || [];
+  if (!works.length) { pane.innerHTML = '<p class="step-note">Nessuna opera simile: generale dalla scheda di modifica (Passo 4 · Opere simili).</p>'; return; }
+  var html = '<div class="sim-carousel"><button class="car-arrow" data-car="left">‹</button><div class="sim-track"><div class="sim-track-inner">';
+  works.forEach(function (w) {
+    var img = w.hasImage
+      ? '<img class="sim-thumb-lg" src="/api/artworks/' + full.id + '/similar/' + w.id + '/image" alt="" loading="lazy" />'
+      : '<div class="sim-ph-lg">🖼 immagine non disponibile</div>';
+    var inner = '<figcaption><strong>' + esc(w.title) + '</strong>' +
+      (w.artist ? '<span>' + esc(w.artist) + (w.date ? ' · ' + esc(w.date) : '') + '</span>' : '') +
+      (w.museum ? '<small>' + esc(w.museum) + '</small>' : '') +
+      (w.caption ? '<p>' + esc(w.caption) + '</p>' : '') + '</figcaption>';
+    html += '<figure class="sim-slide">' + (w.sourceUrl ? '<a href="' + esc(w.sourceUrl) + '" target="_blank" rel="noreferrer">' + img + '</a>' : img) + inner + '</figure>';
+  });
+  html += '</div></div><button class="car-arrow" data-car="right">›</button></div>';
+  pane.innerHTML = html;
+  var track = pane.querySelector('.sim-track');
+  pane.querySelectorAll('[data-car]').forEach(function (b) {
+    b.onclick = function () { if (track) track.scrollBy({ left: b.getAttribute('data-car') === 'left' ? -340 : 340, behavior: 'smooth' }); };
+  });
 }
 function runSave() {
   collectMetaFromInputs();
@@ -560,18 +729,29 @@ function runSave() {
         });
       });
     }, 3).then(function () {
-      // salva ogni contenuto esistente con i campi correnti del form
-      var saves = s.details.map(function (d) {
-        return ['studio', 'approfondimento'].map(function (tab) {
-          return api('/api/artworks/' + s.artworkId).then(function (full) {
-            var fresh = full.details.find(function (x) { return x.id === d.id; });
-            var t = fresh && fresh.tabs[tab];
-            if (!t) return Promise.resolve();
-            return patch('/api/details/' + d.id + '/content/' + tab, Object.assign({}, t.content, { status: 'approved' }));
-          });
+      // ricarica lo stato fresco dal server e riapplica le modifiche fatte negli editor
+      return api('/api/artworks/' + s.artworkId);
+    }).then(function (full) {
+      s.details = full.details || [];
+      var edits = state.fieldEdits || {};
+      Object.keys(edits).forEach(function (did) {
+        Object.keys(edits[did] || {}).forEach(function (tab) {
+          var vals = edits[did][tab] || {};
+          var rec = s.details.find(function (x) { return String(x.id) === String(did); });
+          if (!rec || !rec.tabs || !rec.tabs[tab]) return;
+          if (!rec.tabs[tab].content) rec.tabs[tab].content = {};
+          Object.keys(vals).forEach(function (k) { rec.tabs[tab].content[k] = vals[k]; });
         });
       });
-      return Promise.all([].concat.apply([], saves));
+      var saves = [];
+      s.details.forEach(function (d) {
+        ['studio', 'approfondimento'].forEach(function (tab) {
+          var t = d.tabs && d.tabs[tab];
+          if (!t || !t.content) return;
+          saves.push(patch('/api/details/' + d.id + '/content/' + tab, Object.assign({}, t.content, { status: 'approved' })));
+        });
+      });
+      return Promise.all(saves);
     }).then(function () {
       return post('/api/artworks/' + s.artworkId + '/approve');
     }).then(function () {
@@ -688,6 +868,342 @@ function runGenAll() {
   }).catch(function (e) { toast('Generazione fallita: ' + e.message); render(); });
 }
 
+/* ---------- pannello immagine a fasce: didascalie + spotlight ---------- */
+function railListHtml(list, selId) {
+  if (!list || !list.length) return '<div class="rail-title">Dettagli</div><p class="step-note">Nessun dettaglio ancora: verranno proposti dall’AI durante la generazione.</p>';
+  var h = '<div class="rail-title">Dettagli</div>';
+  list.forEach(function (d, i) {
+    var on = (String(d.id) === String(selId)) ? ' on' : '';
+    h += '<button type="button" class="cap' + on + '" data-cap="' + d.id + '">' +
+      '<span class="num">' + (i + 1) + '</span>' +
+      '<span><span class="cap-t">' + esc(d.title) + '</span>' +
+      (d.category ? '<span class="cap-c">' + esc(d.category) + '</span>' : '') + '</span></button>';
+  });
+  return h;
+}
+function bindRail(wrapId, details, selId, onPick) {
+  var rail = document.getElementById(wrapId);
+  if (!rail) return;
+  rail.innerHTML = railListHtml(details, selId);
+  rail.querySelectorAll('.cap').forEach(function (b) {
+    b.onclick = function () { onPick(Number(b.getAttribute('data-cap'))); };
+  });
+}
+function drawSpotOnCanvas(canvasId, src, details, selId) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  loadImage(src).then(function (img) {
+    if (!img || !canvas) return;
+    var sel = null;
+    (details || []).forEach(function (d) { if (String(d.id) === String(selId)) sel = d; });
+    var W = img.naturalWidth, H = img.naturalHeight;
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    if (!sel || !sel.region) {
+      ctx.filter = 'none';
+      ctx.drawImage(img, 0, 0, W, H);
+      return;
+    }
+    var r = sel.region;
+    var x = Math.max(0, Math.min(W - 1, r.x * W));
+    var y = Math.max(0, Math.min(H - 1, r.y * H));
+    var w = Math.max(1, Math.min(W - x, r.width * W));
+    var h = Math.max(1, Math.min(H - y, r.height * H));
+    // base in scala di grigi
+    ctx.filter = 'grayscale(1)';
+    ctx.drawImage(img, 0, 0, W, H);
+    ctx.filter = 'none';
+    // ripristino a colori solo dentro la regione
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.drawImage(img, 0, 0, W, H);
+    ctx.restore();
+    // alone bianco + contorno colorato
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = 'rgba(255,255,255,.92)';
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#dc7056';
+    ctx.strokeRect(x, y, w, h);
+  });
+}
+function paintStudioPanel() {
+  if (!document.getElementById('wsSpot')) return;
+  var s = studio;
+  if (!s || !s.imageUrl) return;
+  drawSpotOnCanvas('wsSpot', s.imageUrl, s.details || [], s.spotId);
+  bindRail('wsRail', s.details || [], s.spotId, function (id) {
+    if (!studio) return;
+    studio.activeDetailId = id;
+    studio.spotId = (studio.spotId === id) ? null : id;
+    paintStudioPanel();
+    renderDetailsPanel();
+  });
+}
+function paintViewerSpot() {
+  if (!document.getElementById('vwSpot')) return;
+  var full = state.viewerArtwork;
+  if (!full) return;
+  drawSpotOnCanvas('vwSpot', full.imageUrl, full.details || [], state.viewerSelId);
+  bindRail('vwRail', full.details || [], state.viewerSelId, function (id) {
+    state.viewerDetailId = id;
+    state.viewerSelId = (state.viewerSelId === id) ? null : id;
+    renderViewerBody(state.viewerArtwork);
+  });
+}
+
+/* ================= pipeline automatica (immagine → scheda completa) ================= */
+function pipeAlive() { return !!(state.pipeline && state.pipeline.on); }
+function pipeWeightDone(p) { var w = 0; if (p.metaDone) w += 15; if (p.detailsDone) w += 30; w += 75 * (p.tabsDone || 0); if (p.overviewDone) w += 45; if (p.similarDone) w += 60; return w; }
+function pipeWeightTotal(p) { var tabs = (p.tabsTotal && p.tabsTotal > 0) ? p.tabsTotal : 5; return 15 + 30 + 75 * tabs + 45 + 60; }
+function pipeChip(label, st) {
+  var icon = st === 2 ? '✓ ' : '';
+  return '<span class="pipe-chip' + (st === 2 ? ' done' : st === 1 ? ' act' : '') + '">' + icon + esc(label) + '</span>';
+}
+function pipelineCardHtml() {
+  var p = state.pipeline;
+  if (!p || !p.on) return '';
+  var total = pipeWeightTotal(p);
+  var pct = total ? Math.max(0, Math.min(100, Math.round(100 * pipeWeightDone(p) / total))) : 0;
+  var h = '<div class="card pipe-card' + (p.phase === 'done' ? ' ok' : p.phase === 'error' ? ' err' : '') + '">';
+  h += '<div class="pipe-head"><span class="eyebrow">generazione automatica</span><span class="pipe-pct">' + pct + '%</span></div>';
+  h += '<div class="progress"><i style="width:' + pct + '%"></i></div>';
+  h += '<div class="pipe-activity">' + (p.phase === 'done' ? '✓ ' : p.phase === 'error' ? '⚠ ' : '<span class="spinner"></span> ') + esc(p.activity || '') + '</div>';
+  if (p.phase === 'done') h += '<p class="pipe-done-note">Tutti i contenuti sono stati generati e compilati nei box. Rivedili uno ad uno (scheda, dettagli e sezioni) e poi premi <strong>💾 Salva nel database</strong>.</p>';
+  if (p.phase === 'error') {
+    h += '<p class="pipe-err">' + esc(p.err || 'Generazione interrotta') + '</p>';
+    h += '<div class="pipe-actions"><button class="btn primary small" data-pipe="retry">⟳ Riprova da dove si è fermato</button><button class="btn small ghost" data-pipe="cancel">✕ Annulla — continua a mano</button></div>';
+  }
+  h += '<div class="pipe-phases">';
+  h += pipeChip('1 · Riconoscimento opera', p.metaDone ? 2 : (p.phase === 'meta' ? 1 : 0));
+  h += pipeChip('2 · Dettagli notevoli', p.detailsDone ? 2 : (p.phase === 'details' ? 1 : 0));
+  var tabsLabel = '3 · Contenuti dettagli';
+  if (p.tabsTotal > 0) tabsLabel += ' (' + Math.min(p.tabsDone, p.tabsTotal) + '/' + p.tabsTotal + ')';
+  h += pipeChip(tabsLabel, (p.tabsTotal > 0 && p.tabsDone >= p.tabsTotal) ? 2 : (p.phase === 'tabs' ? 1 : 0));
+  h += pipeChip('4 · Presentazione', p.overviewDone ? 2 : (p.phase === 'overview' ? 1 : 0));
+  h += pipeChip('5 · Opere simili', p.similarDone ? 2 : (p.phase === 'similar' ? 1 : 0));
+  h += '</div></div>';
+  return h;
+}
+function pipeCardWrap() { return document.getElementById('pipelineWrap'); }
+function pipePaint() {
+  if (!pipeAlive()) return;
+  var w = pipeCardWrap();
+  if (w) w.innerHTML = pipelineCardHtml();
+}
+function pipeSet(phase, activity) {
+  if (!pipeAlive()) return;
+  var p = state.pipeline;
+  p.phase = phase;
+  p.activity = activity;
+  p.err = null;
+  pipePaint();
+}
+function pipeButtonsDisabled(dis) {
+  ['btnMeta', 'btnDetails', 'btnGenAll', 'btnOverview', 'btnSimilar', 'btnSave'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.disabled = dis;
+  });
+}
+function syncFieldValue(key, value) {
+  state.fieldEdits = state.fieldEdits || {};
+  var dm = state.fieldEdits[studio.activeDetailId] || (state.fieldEdits[studio.activeDetailId] = {});
+  var tm = dm[studio.activeTab] || (dm[studio.activeTab] = {});
+  tm[key] = value;
+  var d = studio.details.find(function (x) { return x.id === studio.activeDetailId; });
+  if (d) { var t = d.tabs && d.tabs[studio.activeTab]; if (t && t.content) t.content[key] = value; }
+}
+function pipeStart() {
+  var s = studio;
+  if (!s || !s.artworkId) return;
+  if (state.pipeline && state.pipeline.on) return;
+  state.pipeline = {
+    on: true, phase: 'meta', activity: 'Riconoscimento dell’opera…', percent: 0,
+    metaDone: false, detailsDone: false, overviewDone: false, similarDone: false,
+    tabsTotal: 0, tabsDone: 0, err: null, startedAt: Date.now()
+  };
+  state.fieldEdits = {};
+  pipeButtonsDisabled(true);
+  pipePaint();
+  pipeRun();
+}
+function pipeRun() {
+  var s = studio;
+  if (!s || !pipeAlive()) return;
+  loadImage(s.imageUrl).then(function () {
+    return pipeMetaStep(s);
+  }).then(function () {
+    return pipeDetailsStep(s);
+  }).then(function () {
+    return pipeTabsStep(s);
+  }).then(function () {
+    return pipeOverviewStep(s);
+  }).then(function () {
+    return pipeSimilarStep(s);
+  }).then(function () {
+    pipeFinish();
+  }).catch(function (e) {
+    pipeFail(e && e.message ? e.message : String(e));
+  });
+}
+function pipeMetaStep(s) {
+  if (!pipeAlive()) return Promise.resolve();
+  if (state.pipeline.metaDone) return Promise.resolve();
+  pipeSet('meta', 'Il modello osserva l\u2019immagine e riconosce l\u2019opera: titolo, artista, data\u2026');
+  return post('/api/artworks/' + s.artworkId + '/generate/meta').then(function (body) {
+    if (!pipeAlive()) return;
+    var m = body.meta || {};
+    var keys = ['title', 'artist', 'date', 'period', 'technique', 'institution', 'location'];
+    var caps = { title: 120, artist: 120, date: 80, period: 80, technique: 80, institution: 120, location: 120 };
+    keys.forEach(function (k) { if (m[k]) s.meta[k] = String(m[k]).slice(0, caps[k]); });
+    // persiste subito la scheda riconosciuta: serve alle fasi successive (dettagli, presentazione)
+    pipeSet('meta', 'Scheda riconosciuta: salvataggio dei metadati\u2026');
+    var payload = {};
+    keys.forEach(function (k) { payload[k] = s.meta[k] || ''; });
+    return patch('/api/artworks/' + s.artworkId, payload);
+  }).then(function () {
+    if (!pipeAlive()) return;
+    var inputs = document.querySelectorAll('[data-meta]');
+    inputs.forEach(function (inp) { inp.value = studio.meta[inp.getAttribute('data-meta')] || ''; });
+    state.pipeline.metaDone = true;
+    pipePaint();
+  });
+}
+function pipeDetailsStep(s) {
+  if (!pipeAlive()) return Promise.resolve();
+  var p = state.pipeline;
+  if (p.detailsDone) return Promise.resolve();
+  pipeSet('details', 'Rilevamento dei dettagli notevoli: analisi dell’immagine intera…');
+  return post('/api/artworks/' + s.artworkId + '/generate/details').then(function (body) {
+    if (!pipeAlive()) return;
+    var items = (body.details || []).map(function (d) { return { title: d.title, category: d.category, region: d.region, short: d.short || '' }; });
+    if (!items.length) throw new Error('Il modello non ha rilevato dettagli in questa immagine: riprova.');
+    pipeSet('details', 'Dettagli trovati: salvataggio delle regioni e immagine annotata (riquadri + didascalie)…');
+    return put('/api/artworks/' + s.artworkId + '/details', { details: items });
+  }).then(function (saved) {
+    if (!pipeAlive()) return;
+    s.details = saved.details || [];
+    s.activeDetailId = s.details[0] ? s.details[0].id : null;
+    var p = state.pipeline;
+    p.detailsDone = true;
+    p.tabsTotal = s.details.length;
+    p.tabsDone = s.details.filter(allTabGenerated).length;
+    renderDetailsPanel();
+    paintStudioPanel();
+    pipePaint();
+  });
+}
+function pipeTabsStep(s) {
+  if (!pipeAlive()) return Promise.resolve();
+  var p = state.pipeline;
+  var todo = (s.details || []).filter(function (d) { return !allTabGenerated(d); });
+  var idx = 0;
+  function next() {
+    if (!pipeAlive()) return Promise.resolve();
+    if (idx >= todo.length) {
+      p.tabsDone = (s.details || []).filter(allTabGenerated).length;
+      pipePaint();
+      return Promise.resolve();
+    }
+    var det = todo[idx++];
+    if (!allTabGenerated(det)) {
+      pipeSet('tabs', 'Genero i contenuti del dettaglio «' + det.title + '»: Studio del dettaglio + Approfondimento (visione condivisa)…');
+      markDetailBadge(det.id, false, false);
+      return loadImage(s.imageUrl).then(function (img) {
+        return cropDataUrl(img, det.region, 900).then(function (crop) {
+          return post('/api/details/' + det.id + '/generate/both', { selectionImage: crop });
+        });
+      }).then(function () {
+        return api('/api/artworks/' + s.artworkId);
+      }).then(function (full) {
+        if (!pipeAlive()) return;
+        s.details = full.details || [];
+        s.activeDetailId = det.id;
+        renderDetailsPanel();
+        renderOverlays();
+        p.tabsDone = (s.details || []).filter(allTabGenerated).length;
+        pipePaint();
+        return next();
+      });
+    }
+    return next();
+  }
+  return next();
+}
+function pipeOverviewStep(s) {
+  if (!pipeAlive()) return Promise.resolve();
+  var p = state.pipeline;
+  if (p.overviewDone) return Promise.resolve();
+  pipeSet('overview', 'Generazione della presentazione: “Il dipinto” e “L’artista”…');
+  return post('/api/artworks/' + s.artworkId + '/generate/overview', {}).then(function () {
+    if (!pipeAlive()) return;
+    state.pipeline.overviewDone = true;
+    renderOverviewPanel();
+    pipePaint();
+  });
+}
+function pipeSimilarStep(s) {
+  if (!pipeAlive()) return Promise.resolve();
+  var p = state.pipeline;
+  if (p.similarDone) return Promise.resolve();
+  pipeSet('similar', 'Generazione delle opere simili: il modello propone 10 opere con lo stesso soggetto, poi cerco e scarico le immagini da Wikimedia Commons e dal MET…');
+  return post('/api/artworks/' + s.artworkId + '/generate/similar', {}).then(function () {
+    if (!pipeAlive()) return;
+    state.pipeline.similarDone = true;
+    pipePaint();
+  });
+}
+function pipeFinish() {
+  if (!pipeAlive()) return;
+  var s = studio;
+  var secs = Math.round((Date.now() - state.pipeline.startedAt) / 1000);
+  state.pipeline.activity = 'Pipeline completata in ' + secs + ' secondi: tutti i contenuti sono pronti.';
+  state.pipeline.phase = 'done';
+  api('/api/artworks/' + s.artworkId).then(function (full) {
+    if (!state.pipeline || !studio) return;
+    studio.details = full.details || [];
+    render();
+    toast('Generazione automatica completata — rivedi e premi Salva nel database', true);
+  }).catch(function () {
+    if (!studio) return;
+    render();
+    toast('Generazione automatica completata — rivedi e premi Salva nel database', true);
+  });
+}
+function pipeFail(msg) {
+  if (!pipeAlive()) return;
+  state.pipeline.phase = 'error';
+  state.pipeline.err = msg;
+  state.pipeline.activity = 'La generazione automatica si è interrotta.';
+  pipePaint();
+}
+function pipeRetry() {
+  var s = studio;
+  if (!s || !state.pipeline) return;
+  var p = state.pipeline;
+  p.on = true;
+  p.err = null;
+  p.phase = 'pre';
+  p.activity = 'Riavvio dai contenuti mancanti…';
+  pipeButtonsDisabled(true);
+  api('/api/artworks/' + s.artworkId).then(function (full) {
+    if (!state.pipeline) return;
+    s.details = full.details || [];
+    p.tabsTotal = (s.details || []).length;
+    p.tabsDone = (s.details || []).filter(allTabGenerated).length;
+    pipePaint();
+    pipeRun();
+  }).catch(function (e) { pipeFail(e && e.message ? e.message : 'Errore di rete'); });
+}
+function pipeCancel() {
+  state.pipeline = null;
+  render();
+  toast('Generazione automatica annullata: puoi procedere manualmente');
+}
+
 /* ---------- viewer ---------- */
 function openViewer(id) { state.view = 'viewer'; state.viewerId = id; render(); }
 function renderViewer() {
@@ -705,30 +1221,30 @@ function renderViewerBody(full) {
   state.viewerArtwork = full;
   state.viewerDetailId = state.viewerDetailId || (full.details[0] ? full.details[0].id : null);
   state.viewerTab = state.viewerTab || 'studio';
+  if (state.viewerSelId === undefined) state.viewerSelId = null;
   var html = '<div class="viewer-title"><span class="eyebrow">' + esc(full.period || '') + '</span>' +
     '<h1>' + esc(full.title) + '</h1>' +
     '<p class="meta">' + esc(full.artist || '') + (full.date ? ' · ' + esc(full.date) : '') + (full.institution ? ' · ' + esc(full.institution) : '') + '</p></div>';
-  html += '<div class="card" style="margin:18px 0"><div class="ov-grid">' +
+  state.viewerOvTab = state.viewerOvTab || 'overview';
+  html += '<div class="card" style="margin:18px 0"><div class="content-tabs" id="ovTabs">' +
+    '<div class="ctab' + (state.viewerOvTab === 'overview' ? ' active' : '') + '" data-ovtab="overview">Presentazione</div>' +
+    '<div class="ctab' + (state.viewerOvTab === 'similar' ? ' active' : '') + '" data-ovtab="similar">Opere simili</div></div>' +
+    '<div id="ovOverviewPane"' + (state.viewerOvTab === 'overview' ? '' : ' style="display:none"') + '><div class="ov-grid">' +
     '<div class="ov-col"><h4>IL DIPINTO</h4><p>' + esc(full.overview.painting) + '</p></div>' +
-    '<div class="ov-col"><h4>L’ARTISTA</h4><p>' + esc(full.overview.artist) + '</p></div></div></div>';
+    '<div class="ov-col"><h4>L’ARTISTA</h4><p>' + esc(full.overview.artist) + '</p></div></div></div>' +
+    '<div id="ovSimilarPane"' + (state.viewerOvTab === 'similar' ? '' : ' style="display:none"') + '></div></div>';
   html += '<div class="viewer-layout">';
-  // colonna immagine
-  if (state.viewerAnnotated === undefined) state.viewerAnnotated = !!full.annotatedImageUrl;
-  var dispUrl = (state.viewerAnnotated && full.annotatedImageUrl) ? full.annotatedImageUrl : full.imageUrl;
-  html += '<div><div class="image-stage"><img id="vwImg" src="' + esc(dispUrl) + '" alt="' + esc(full.title) + '" crossorigin="anonymous" /><div id="vwOverlays"></div></div>';
-  html += '<div class="hotspot-chip-row">';
-  if (full.annotatedImageUrl) html += '<button class="hchip toggle" data-vannot="1">' + (state.viewerAnnotated ? '🖼 Vista pulita' : '👁 Mostra riquadri') + '</button>';
-  full.details.forEach(function (d, i) {
-    html += '<button class="hchip' + (state.viewerDetailId === d.id ? ' active' : '') + '" data-vsel="' + d.id + '">' + (i + 1) + ' · ' + esc(d.title) + '</button>';
-  });
-  html += '</div></div>';
+  // colonna immagine: fasce 1–4 immagine, fascia 5 didascalie
+  html += '<div><div class="img-panel"><div class="spot-wrap"><canvas id="vwSpot"></canvas></div><div class="cap-rail" id="vwRail"></div></div>';
+  html += '<p class="spot-hint">Seleziona una didascalia a destra: quel dettaglio resta a colori, lo sfondo diventa in scala di grigi. Ripremi la didascalia attiva per tornare all’immagine completa.</p></div>';
   // colonna dettaglio
   var active = full.details.find(function (d) { return d.id === state.viewerDetailId; }) || full.details[0];
   html += '<div class="card">' + renderViewerDetail(active) + '</div>';
   html += '</div>';
   document.getElementById('viewerBody').innerHTML = html;
-  drawViewerOverlays(full);
   bindViewer(full);
+  paintViewerSpot();
+  renderViewerSimilar(full);
 }
 function drawViewerOverlays(full) {
   var wrap = document.getElementById('vwOverlays');
@@ -758,7 +1274,7 @@ function renderViewerDetail(d) {
   });
   html += '</div>';
   var content = (tabs[state.viewerTab] && tabs[state.viewerTab].content) || {};
-  var keys = state.viewerTab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions'];
+  var keys = state.viewerTab === 'studio' ? ['observation', 'meaning', 'relation'] : ['curiosity', 'comparisons', 'openQuestions', 'technique'];
   keys.forEach(function (k) {
     if (!content[k]) return;
     html += '<div class="section-block" style="border-top:none"><h4>' + fieldLabel(k) + '</h4><p style="font-size:12px;line-height:1.7;margin:0">' + esc(content[k]) + '</p></div>';
@@ -781,6 +1297,9 @@ function bindViewer(full) {
   });
   var van = appEl.querySelector('[data-vannot]');
   if (van) van.onclick = function () { state.viewerAnnotated = !state.viewerAnnotated; renderViewerBody(full); };
+  appEl.querySelectorAll('[data-ovtab]').forEach(function (b) {
+    b.onclick = function () { state.viewerOvTab = b.getAttribute('data-ovtab'); renderViewerBody(full); };
+  });
 }
 function bindGlobal() {
   appEl.addEventListener('click', function (e) {
@@ -788,8 +1307,8 @@ function bindGlobal() {
     if (nav) {
       e.preventDefault();
       var dest = nav.getAttribute('data-nav');
-      if (dest === 'home') { state.view = 'home'; refreshList(); }
-      else if (dest === 'new') { studio = new StudioView(); state.view = 'studio'; render(); }
+      if (dest === 'home') { state.view = 'home'; state.pipeline = null; refreshList(); }
+      else if (dest === 'new') { studio = new StudioView(); state.pipeline = null; state.view = 'studio'; render(); }
       return;
     }
     var open = e.target.closest('[data-open]');
@@ -798,6 +1317,13 @@ function bindGlobal() {
     if (view) { e.preventDefault(); openViewer(view.getAttribute('data-view')); return; }
     var del = e.target.closest('[data-del]');
     if (del) { e.preventDefault(); removeArtwork(del.getAttribute('data-del')); return; }
+    var pipe = e.target.closest('[data-pipe]');
+    if (pipe) {
+      e.preventDefault();
+      if (pipe.getAttribute('data-pipe') === 'retry') pipeRetry();
+      else if (pipe.getAttribute('data-pipe') === 'cancel') pipeCancel();
+      return;
+    }
   });
 }
 /* ---------- home actions ---------- */
@@ -817,6 +1343,7 @@ function removeArtwork(id) {
 }
 function openStudio(id) {
   studio = new StudioView();
+  state.pipeline = null;
   studio.artworkId = id;
   api('/api/artworks/' + id).then(function (full) {
     studio.imageUrl = full.imageUrl;
@@ -827,6 +1354,14 @@ function openStudio(id) {
     render();
   }).catch(function (e) { toast(e.message); });
 }
+/* listener input: registra le modifiche dell'utente negli editor (per il Salva finale) */
+appEl.addEventListener('input', function (e) {
+  var t = e.target;
+  if (!t || !t.matches) return;
+  if (t.matches('textarea[data-field]') && studio && studio.artworkId) {
+    syncFieldValue(t.getAttribute('data-field'), t.value);
+  }
+});
 /* ================= boot ================= */
 bindGlobal();
 api('/api/status').then(function (s) {

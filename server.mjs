@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
+// Lettura (sola lettura, zero scritture) delle schede "ready" prodotte da art-creator.
+import {
+  listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO,
+  getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO
+} from './art-creator/db.mjs';
+
 function loadLocalEnv() {
   for (const filename of ['.env.local', '.env']) {
     try {
@@ -108,6 +114,7 @@ export function normalizeAnalysis(raw, input, citations = []) {
       curiosity: String(content.curiosity || '').trim(),
       comparisons: advanced ? String(content.comparisons || '').trim() : '',
       openQuestions: advanced ? String(content.openQuestions || '').trim() : '',
+      technique: advanced ? String(content.technique || '').trim() : '',
       lookAgain: stripLookAgainPrefix(String(content.lookAgain || '').trim())
     },
     sources: [...collectWebSources(citations), ...(input.sources || [])],
@@ -141,6 +148,112 @@ function extractContent(raw) {
 
 export async function imageDataUri() { return `data:image/jpeg;base64,${(await readFile(IMAGE_PATH)).toString('base64')}`; }
 
+
+export function normalizeSimilar(raw, input) {
+  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.works) ? raw.works : []);
+  return list.slice(0, 10).map((w, index) => ({
+    title: String(w.title || ('Opera ' + (index + 1))).slice(0, 120),
+    artist: String(w.artist || '').slice(0, 120),
+    date: String(w.date || '').slice(0, 60),
+    museum: String(w.museum || '').slice(0, 120),
+    caption: String(w.caption || '').slice(0, 300),
+    search: String(w.search || ((w.title || '') + ' ' + (w.artist || ''))).trim().slice(0, 160),
+    imageStatus: 'pending'
+  }));
+}
+
+export function buildSimilarPrompt(input) {
+  const a = input.artwork || {};
+  const level = input.learningLevel || 'Scuola secondaria';
+  return `Sei uno storico dell\'arte italiano. Proponi 10 opere REALI e CELEBRI, di ogni epoca e paese, che condividono il soggetto dell\'opera in esame (stessa iconografia o stesso tema, in tutta la storia dell\'arte: dal Medioevo al Novecento, scuole diverse).
+
+Opera in esame: ${a.title || ''}
+Artista: ${a.artist || ''}
+Data: ${a.date || ''}
+Periodo: ${a.period || ''}
+Tecnica: ${a.technique || ''}
+
+Regole:
+- SOLO opere reali e riconoscibili: più sono celebri, meglio è (perché devono avere una foto in pubblico dominio su Wikimedia Commons o al MET).
+- Varietà: scegli autori, secoli e paesi diversi quando possibile.
+- Per ogni opera restituisci:
+  - "title": titolo (in italiano se noto, altrimenti quello internazionale)
+  - "artist": autore
+  - "date": data o periodo
+  - "museum": museo o collezione che la conserva
+  - "caption": perché è simile al soggetto dell\'opera in esame (max 25 parole, tono didattico)
+  - "search": parole chiave per trovare l\'immagine (titolo originale + autore, in inglese se aiuta; es. "Annunciation Memling")
+- Non inventare nulla: se non sei certo che un\'opera esista, sostituiscila con un\'altra.
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"works":[{"title":"...","artist":"...","date":"...","museum":"...","caption":"...","search":"..."}, ... 10 voci]}`;
+}
+
+// ---------- risoluzione immagini (Wikimedia Commons + MET, senza chiavi) ----------
+const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
+const MET_SEARCH_API = 'https://collectionapi.metmuseum.org/public/collection/v1/search';
+const MET_OBJECT_API = 'https://collectionapi.metmuseum.org/public/collection/v1/objects/';
+const IMAGE_UA = 'artest-didattico/1.0 (didactic art app; contact: local)';
+
+export async function resolveSimilarImage(work, fetchImpl = globalThis.fetch) {
+  const query = String(work.search || `${work.title} ${work.artist}`).trim().slice(0, 120);
+  const params = new URLSearchParams({
+    action: 'query', format: 'json', generator: 'search',
+    gsrsearch: query, gsrnamespace: '6', gsrlimit: '3',
+    prop: 'imageinfo', iiprop: 'url|mime', iiurlwidth: '640'
+  });
+  try {
+    const resp = await fetchImpl(`${COMMONS_API}?${params.toString()}`, { headers: { 'User-Agent': IMAGE_UA } });
+    if (resp.ok) {
+      const data = await resp.json();
+      const pages = (data?.query?.pages && typeof data.query.pages === 'object') ? Object.values(data.query.pages) : [];
+      for (const page of pages) {
+        const ii = Array.isArray(page.imageinfo) ? page.imageinfo[0] : null;
+        if (ii && ii.thumburl && (!ii.mime || ii.mime.startsWith('image/'))) {
+          return { ...work, imageUrl: ii.thumburl, imagePage: ii.descriptionurl || '', imageStatus: 'ok' };
+        }
+      }
+    }
+  } catch {}
+  try {
+    const searchResp = await fetchImpl(`${MET_SEARCH_API}?${new URLSearchParams({ q: query, hasImages: 'true' })}`, { headers: { 'User-Agent': IMAGE_UA } });
+    if (searchResp.ok) {
+      const searchData = await searchResp.json();
+      const objectId = Array.isArray(searchData?.objectIDs) ? searchData.objectIDs[0] : null;
+      if (objectId) {
+        const objResp = await fetchImpl(`${MET_OBJECT_API}${objectId}`, { headers: { 'User-Agent': IMAGE_UA } });
+        if (objResp.ok) {
+          const obj = await objResp.json();
+          const url = obj.primaryImageSmall || obj.primaryImage;
+          if (url) return { ...work, imageUrl: url, imagePage: `https://www.metmuseum.org/art/collection/search/${objectId}`, imageStatus: 'ok' };
+        }
+      }
+    }
+  } catch {}
+  return { ...work, imageUrl: '', imagePage: '', imageStatus: 'missing' };
+}
+
+export async function resolveSimilarImages(works, fetchImpl = globalThis.fetch) {
+  const out = [];
+  for (const w of works) {
+    out.push(await resolveSimilarImage(w, fetchImpl));
+    await sleep(250);
+  }
+  return out;
+}
+
+export async function callOpenRouterSimilar(input, fetchImpl = globalThis.fetch) {
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) throw new Error('OPENROUTER_API_KEY non configurata');
+  const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSimilarPrompt(input) }], apiKey, fetchImpl);
+  const works = normalizeSimilar(raw.data, input);
+  const resolved = await resolveSimilarImages(works, fetchImpl);
+  return {
+    status: 'completed',
+    works: resolved,
+    disclaimer: 'Opere e didascalie generate con intelligenza artificiale; immagini da Wikimedia Commons e dal Metropolitan Museum of Art (pubblico dominio). Verifica autore, data e collocazione prima dell\'uso didattico.'
+  };
+}
 
 export function buildVisionPrompt(input) {
   const a = input.artwork || {};
@@ -188,9 +301,12 @@ export function buildTextPrompt(input, visionResult) {
   const openRule = advanced
     ? '"openQuestions" (OBBLIGATORIO al livello Approfondimento): segnala 1-2 questioni aperte o dibattute dagli studiosi su QUESTO dettaglio o sull’opera (iconografia, attribuzione, interpretazione, stato di conservazione). Scrivi almeno una questione.'
     : '"openQuestions": NON INCLUDERE questo campo per il livello Scuola secondaria.';
+  const techniqueRule = advanced
+    ? '"technique" (OBBLIGATORIO al livello Approfondimento, 60-90 parole): spiega COME è dipinto QUESTO dettaglio — materia e tecnica pittorica: tratto e pennellata, impasto o velature, uso del colore e delle campiture, luci, ombre e contrasti, zone di colore, dorature o vernici, e i materiali del supporto (tela, tavola, intonaco, pigmenti). Descrivi prima ciò che è osservabile nel dettaglio, poi integra con quanto sai della tecnica dell\'opera e dell\'artista (es. affresco, tempera su tavola, olio su tela).'
+    : '"technique": NON INCLUDERE questo campo per il livello Scuola secondaria.';
   const lookAgainRule = '"lookAgain" (OBBLIGATORIO, una sola frase, max 20 parole): chiudi il ciclo didattico con un invito a guardare ancora l\'immagine, puntando su UN elemento visivo specifico legato a QUESTO dettaglio (es. "dove cade la luce sulle ali?"). Deve spingere lo studente a tornare all\'immagine, non a leggere.';
   const example = advanced
-    ? '{"observation":"...","meaning":"...","relation":"...","curiosity":"...","comparisons":"...","openQuestions":"...","lookAgain":"...","confidence":{"level":"high|medium|low","label":"..."}}'
+    ? '{"observation":"...","meaning":"...","relation":"...","curiosity":"...","comparisons":"...","openQuestions":"...","technique":"...","lookAgain":"...","confidence":{"level":"high|medium|low","label":"..."}}'
     : '{"observation":"...","meaning":"...","relation":"...","curiosity":"...","lookAgain":"...","confidence":{"level":"high|medium|low","label":"..."}}';
   return `Sei un educatore d’arte italiano che spiega a uno studente di livello ${input.learningLevel || 'Scuola secondaria'} il dettaglio selezionato di un’opera.
 
@@ -208,10 +324,11 @@ Rispondi con UN SOLO oggetto JSON valido, senza markdown né testo fuori dall’
 2. "meaning" (OBBLIGATORIO, 60-90 parole): descrizione concettuale del dettaglio da solo — cosa rappresenta, che significato ha, perché l’artista lo ha inserito.
 3. "relation" (OBBLIGATORIO, 60-90 parole): come il dettaglio si relaziona agli altri dettagli notevoli dell’opera elencati sopra — cita almeno uno di questi dettagli per nome e spiega il legame visivo, simbolico o narrativo.
 4. "curiosity" (OPZIONALE a ogni livello): solo se hai una curiosità breve, verificabile e SPECIFICA di QUESTO dettaglio (mai sull’opera o sull’artista in generale). Se non ne hai una di cui sei ragionevolmente certo, usa esattamente la stringa vuota: "".
-   Anche "lookAgain" (vedi campo 7) è sempre richiesto: è l’invito finale a tornare a guardare l’immagine.
+   Anche "lookAgain" (vedi campo 8) è sempre richiesto: è l’invito finale a tornare a guardare l’immagine.
 5. ${comparisonRule}
 6. ${openRule}
-7. ${lookAgainRule}
+7. ${techniqueRule}
+8. ${lookAgainRule}
 
 Aggiungi sempre anche "confidence": {"level":"high|medium|low","label":"..."}.
 
@@ -281,6 +398,136 @@ export async function callOpenRouterOverview(input, fetchImpl = globalThis.fetch
 export const callNvidia = callOpenRouter;
 function json(res, status, payload) { const data = Buffer.from(JSON.stringify(payload)); res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': data.length, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); res.end(data); }
 function error(code, message, retryable = false) { return { error: { code, message, retryable } }; }
+
+// ---------------------------------------------------------------------------
+// Libreria e schede pubblicate: lettura (read-only) del DB di art-creator.
+// ---------------------------------------------------------------------------
+function catalogArtwork(a) {
+  return {
+    id: a.id,
+    title: a.title || '',
+    artist: a.artist || '',
+    date: a.date || '',
+    period: a.period || '',
+    technique: a.technique || '',
+    institution: a.institution || '',
+    location: a.location || '',
+    imageWidth: a.imageWidth || 0,
+    imageHeight: a.imageHeight || 0,
+    featured: false,
+    image: '/api/artworks/' + a.id + '/image',
+    fallbackImage: '/api/artworks/' + a.id + '/image'
+  };
+}
+
+function normalizeStoredRow(row) {
+  if (!row) return null;
+  const c = row.content || {};
+  return {
+    observation: String(c.observation || '').trim(),
+    meaning: String(c.meaning || '').trim(),
+    relation: String(c.relation || '').trim(),
+    curiosity: String(c.curiosity || '').trim(),
+    comparisons: String(c.comparisons || '').trim(),
+    openQuestions: String(c.openQuestions || '').trim(),
+    technique: String(c.technique || '').trim(),
+    lookAgain: stripLookAgainPrefix(String(c.lookAgain || '').trim())
+  };
+}
+
+function dbArtworkPayload(id) {
+  const ready = listReadyArtworksRO().find(a => a.id === id);
+  if (!ready) return null;
+  const images = getArtworkImageDataRO(id);
+  if (!images) return null;
+  const overviewRow = getOverviewRO(id);
+  const details = listDetailsRO(id);
+  const similar = listSimilarWorksRO(id);
+  const sources = listSourcesRO(id);
+  const hotspots = details.map(detail => {
+    const studio = getDetailContentRO(detail.id, 'studio');
+    const approfondimento = getDetailContentRO(detail.id, 'approfondimento');
+    return {
+      id: String(detail.id),
+      title: detail.title,
+      category: detail.category,
+      region: detail.region,
+      short: String(studio && studio.content && studio.content.observation ? studio.content.observation.slice(0, 110) : ''),
+      insight: String(approfondimento && approfondimento.content && approfondimento.content.technique ? approfondimento.content.technique.slice(0, 140) : ''),
+      studio: normalizeStoredRow(studio),
+      approfondimento: normalizeStoredRow(approfondimento)
+    };
+  });
+  return Object.assign({}, catalogArtwork(ready), {
+    image: '/api/artworks/' + id + '/image',
+    fallbackImage: '/api/artworks/' + id + '/image',
+    hasAnnotated: Boolean(images.annotated),
+    annotatedImageUrl: images.annotated ? '/api/artworks/' + id + '/image-annotated' : null,
+    description: (overviewRow && overviewRow.painting ? overviewRow.painting.slice(0, 300) : '') || (ready.title ? 'Esplora «' + ready.title + '» dettaglio per dettaglio.' : ''),
+    alt: ready.title ? (ready.artist ? ready.artist + ', ' : '') + ready.title : 'Opera d’arte',
+    rights: 'Scheda didattica generata con intelligenza artificiale (art-creator). Immagine per uso didattico; verifica i diritti prima di un uso pubblico.',
+    featured: true,
+    levels: ['Scuola secondaria', 'Approfondimento'],
+    hotspots,
+    overview: overviewRow ? { painting: overviewRow.painting || '', artist: overviewRow.artist || '' } : null,
+    sources: sources.map(s => ({ title: s.title, url: s.url, type: s.type })),
+    details: hotspots,
+    similarWorks: similar.map(s => ({
+      id: s.id,
+      title: s.title,
+      artist: s.artist,
+      date: s.date,
+      museum: s.museum,
+      caption: s.caption,
+      imageUrl: s.hasImage ? '/api/artworks/' + id + '/similar/' + s.id + '/image' : null,
+      sourceUrl: s.imagePage || s.imageUrl,
+      imageStatus: s.imageStatus
+    }))
+  });
+}
+
+function sendImage(res, img) {
+  if (!img) return json(res, 404, error('NOT_FOUND', 'Immagine non disponibile'));
+  const buf = Buffer.from(img.data);
+  res.writeHead(200, { 'Content-Type': img.mime || 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+  res.end(buf);
+}
+
 async function serveStatic(req, res) { const requestPath = req.url === '/' ? '/index.html' : new URL(req.url, 'http://localhost').pathname; const filePath = resolve(ROOT, `.${normalize(requestPath)}`); if (!filePath.startsWith(ROOT)) return (res.writeHead(403), res.end('Forbidden')); try { const info = await stat(filePath); if (!info.isFile()) throw new Error(); const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jsx': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' }; res.writeHead(200, { 'Content-Type': types[extname(filePath)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(await readFile(filePath)); } catch { res.writeHead(404); res.end('Not Found'); } }
-export function createAppServer() { return createServer((req, res) => { if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }); res.end(); return; } if (req.method === 'GET' && req.url === '/api/status') return json(res, 200, { configured: Boolean(getOpenRouterApiKey()), visionModel: VISION_MODEL, textModel: TEXT_MODEL }); if (req.method === 'POST' && (req.url === '/api/overview' || req.url === '/api/analyze')) { let body = ''; let tooLarge = false; req.on('data', chunk => { body += chunk; if (Buffer.byteLength(body) > 2 * 1024 * 1024) tooLarge = true; }); req.on('end', async () => { if (tooLarge) return json(res, 413, error('PAYLOAD_TOO_LARGE', 'Richiesta non valida o troppo grande')); try { const input = JSON.parse(body); if (!input.artwork) return json(res, 400, error('INVALID_REQUEST', 'Opera e selezione sono obbligatorie')); if (req.url === '/api/overview') return json(res, 200, await callOpenRouterOverview(input)); if (!input.selection) return json(res, 400, error('INVALID_REQUEST', 'Opera e selezione sono obbligatorie')); return json(res, 200, await callOpenRouter(input)); } catch (err) { const message = err.message || 'Errore interno durante l’analisi'; if (message.includes('OPENROUTER_API_KEY')) return json(res, 503, error('OPENROUTER_NOT_CONFIGURED', message)); if (message.includes('non è valida') || message.includes('rifiutato') || message.includes('Limite')) return json(res, 502, error('OPENROUTER_ERROR', message, true)); return json(res, 500, error('INTERNAL_ERROR', message, true)); } }); return; } if (req.method === 'GET') return serveStatic(req, res); json(res, 404, error('NOT_FOUND', 'Endpoint non trovato')); }); }
+export function createAppServer() { return createServer((req, res) => { if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }); res.end(); return; }
+
+    // ---------- scheda pubblicata da art-creator (sola lettura dal DB SQLite) ----------
+    if (req.method === 'GET' && req.url === '/api/library') {
+      let artworks = [];
+      try { artworks = listReadyArtworksRO().map(catalogArtwork); } catch (e) {}
+      return json(res, 200, { artworks, source: 'art-creator' });
+    }
+    const artworkMatch = req.method === 'GET' && req.url && req.url.match(/^\/api\/artworks\/([^/]+)\/image-annotated$/);
+    const imageMatch = req.method === 'GET' && req.url && req.url.match(/^\/api\/artworks\/([^/]+)\/image$/);
+    const similarMatch = req.method === 'GET' && req.url && req.url.match(/^\/api\/artworks\/([^/]+)\/similar\/(\d+)\/image$/);
+    if (req.method === 'GET' && req.url && /^\/api\/artworks\/[^/]+$/.test(req.url)) {
+      const id = decodeURIComponent(req.url.split('/')[3]);
+      let payload = null;
+      try { payload = dbArtworkPayload(id); } catch (e) {}
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Scheda non trovata: pubblica l’opera da art-creator'));
+      return json(res, 200, payload);
+    }
+    if (similarMatch) {
+      let img = null;
+      try { img = getSimilarImageRO(decodeURIComponent(similarMatch[1]), Number(similarMatch[2])); } catch (e) {}
+      return sendImage(res, img);
+    }
+    if (imageMatch) {
+      let img = null;
+      try { img = getArtworkImageDataRO(decodeURIComponent(imageMatch[1])); } catch (e) {}
+      return sendImage(res, img && img.clean);
+    }
+    if (artworkMatch) {
+      let img = null;
+      try { img = getArtworkImageDataRO(decodeURIComponent(artworkMatch[1])); } catch (e) {}
+      return sendImage(res, img && img.annotated);
+    }
+
+    if (req.method === 'GET' && req.url === '/api/status') return json(res, 200, { configured: Boolean(getOpenRouterApiKey()), visionModel: VISION_MODEL, textModel: TEXT_MODEL }); if (req.method === 'POST' && (req.url === '/api/overview' || req.url === '/api/analyze' || req.url === '/api/similar')) { let body = ''; let tooLarge = false; req.on('data', chunk => { body += chunk; if (Buffer.byteLength(body) > 2 * 1024 * 1024) tooLarge = true; }); req.on('end', async () => { if (tooLarge) return json(res, 413, error('PAYLOAD_TOO_LARGE', 'Richiesta non valida o troppo grande')); try { const input = JSON.parse(body); if (!input.artwork) return json(res, 400, error('INVALID_REQUEST', 'Opera e selezione sono obbligatorie')); if (req.url === '/api/overview') return json(res, 200, await callOpenRouterOverview(input));
+    if (req.url === '/api/similar') return json(res, 200, await callOpenRouterSimilar(input)); if (!input.selection) return json(res, 400, error('INVALID_REQUEST', 'Opera e selezione sono obbligatorie')); return json(res, 200, await callOpenRouter(input)); } catch (err) { const message = err.message || 'Errore interno durante l’analisi'; if (message.includes('OPENROUTER_API_KEY')) return json(res, 503, error('OPENROUTER_NOT_CONFIGURED', message)); if (message.includes('non è valida') || message.includes('rifiutato') || message.includes('Limite')) return json(res, 502, error('OPENROUTER_ERROR', message, true)); return json(res, 500, error('INTERNAL_ERROR', message, true)); } }); return; } if (req.method === 'GET') return serveStatic(req, res); json(res, 404, error('NOT_FOUND', 'Endpoint non trovato')); }); }
 if (process.argv[1] === fileURLToPath(import.meta.url)) createAppServer().listen(PORT, HOST, () => { console.log(`Leggi l’Opera d’Arte: http://${HOST}:${PORT}`); console.log(`Modello visione: ${VISION_MODEL}`); console.log(`Modello testo: ${TEXT_MODEL}`); console.log(getOpenRouterApiKey() ? 'OpenRouter API key: configurata' : 'OpenRouter API key: non configurata'); });

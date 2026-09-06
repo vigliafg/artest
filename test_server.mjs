@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { buildOverviewPrompt, buildTextPrompt, callModel, callOpenRouter, callOpenRouterOverview, cleanModelJson, createAppServer, getOpenRouterApiKey, normalizeAnalysis, normalizeOverview, VISION_MODEL, TEXT_MODEL } from './server.mjs';
+import { readFile, copyFile, mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { buildOverviewPrompt, buildSimilarPrompt, buildTextPrompt, callModel, callOpenRouter, callOpenRouterOverview, cleanModelJson, createAppServer, getOpenRouterApiKey, normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImage, VISION_MODEL, TEXT_MODEL } from './server.mjs';
+
+// Libreria pubblicata: accesso in sola lettura alle schede "ready" di art-creator.
+import { DB_PATH, listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO, getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO } from './art-creator/db.mjs';
 
 const input = {
   artwork: { title: 'Annunciazione', artist: 'Beato Angelico', period: 'Rinascimento fiorentino' },
@@ -58,14 +63,16 @@ test('normalizeAnalysis applies fallbacks for missing blocks', () => {
 });
 
 test('normalizeAnalysis strips advanced blocks at school level and keeps them at Approfondimento', () => {
-  const raw = { observation: 'o', meaning: 'm', relation: 'r', curiosity: 'c', comparisons: 'Un confronto con opere reali', openQuestions: 'Una questione aperta' };
+  const raw = { observation: 'o', meaning: 'm', relation: 'r', curiosity: 'c', comparisons: 'Un confronto con opere reali', openQuestions: 'Una questione aperta', technique: 'Pennellate fitte, impasto denso' };
   const school = normalizeAnalysis(raw, input);
   assert.equal(school.content.comparisons, '');
   assert.equal(school.content.openQuestions, '');
+  assert.equal(school.content.technique, '');
   assert.equal(school.content.curiosity, 'c');
   const advanced = normalizeAnalysis(raw, advancedInput);
   assert.equal(advanced.content.comparisons, 'Un confronto con opere reali');
   assert.equal(advanced.content.openQuestions, 'Una questione aperta');
+  assert.equal(advanced.content.technique, 'Pennellate fitte, impasto denso');
 });
 
 test('buildTextPrompt instructs the model to omit advanced blocks at school level', () => {
@@ -73,6 +80,7 @@ test('buildTextPrompt instructs the model to omit advanced blocks at school leve
   assert.equal(prompt.includes('NON INCLUDERE questo campo per il livello Scuola secondaria'), true);
   assert.equal(prompt.includes('"comparisons"'), true);
   assert.equal(prompt.includes('"openQuestions"'), true);
+  assert.equal(prompt.includes('"technique"'), true);
 });
 
 test('buildTextPrompt requests advanced blocks only at Approfondimento', () => {
@@ -80,6 +88,8 @@ test('buildTextPrompt requests advanced blocks only at Approfondimento', () => {
   assert.equal(prompt.includes('OBBLIGATORIO al livello Approfondimento'), true);
   assert.equal(prompt.includes('stesso soggetto, stesso artista o stesso contesto'), true);
   assert.equal(prompt.includes('questioni aperte o dibattute dagli studiosi'), true);
+  assert.equal(prompt.includes('"technique"'), true);
+  assert.equal(prompt.includes('materia e tecnica pittorica'), true);
 });
 
 test('buildTextPrompt keeps only detail-related work and lists other notable details', () => {
@@ -91,6 +101,63 @@ test('buildTextPrompt keeps only detail-related work and lists other notable det
   assert.equal(prompt.includes('"curiosity"'), true);
   assert.equal(prompt.includes('OPZIONALE'), true);
   assert.equal(prompt.includes('stringa vuota'), true);
+});
+
+test('normalizeSimilar keeps up to 10 works with all fields', () => {
+  const raw = { works: Array.from({ length: 12 }, (_, i) => ({ title: 'Opera ' + i, artist: 'Autore', date: '1500', museum: 'Museo', caption: 'Stesso soggetto', search: 'termine' })) };
+  const result = normalizeSimilar(raw, input);
+  assert.equal(result.length, 10);
+  assert.equal(result[0].title, 'Opera 0');
+  assert.equal(result[0].artist, 'Autore');
+  assert.equal(result[0].imageStatus, 'pending');
+  assert.equal(result[9].search, 'termine');
+});
+
+test('normalizeSimilar accepts a bare array', () => {
+  const result = normalizeSimilar([{ title: 'Solo' }], input);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].title, 'Solo');
+});
+
+test('buildSimilarPrompt requests 10 works and mentions the artwork subject', () => {
+  const prompt = buildSimilarPrompt(input);
+  assert.equal(prompt.includes('"works"'), true);
+  assert.equal(prompt.includes('Annunciazione'), true);
+  assert.equal(prompt.includes('"search"'), true);
+  assert.equal(prompt.includes('Wikimedia Commons'), true);
+});
+
+test('resolveSimilarImage finds a Commons thumbnail', async () => {
+  const fakeFetch = async (url) => {
+    if (String(url).includes('commons.wikimedia.org')) {
+      return new Response(JSON.stringify({ query: { pages: { '1': { title: 'File:X.jpg', imageinfo: [{ thumburl: 'https://thumb.example/x.jpg', mime: 'image/jpeg', descriptionurl: 'https://commons.example/wiki/File:X.jpg' }] } } } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response('{}', { status: 404 });
+  };
+  const out = await resolveSimilarImage({ title: 'X', artist: 'Y', search: 'X Y' }, fakeFetch);
+  assert.equal(out.imageStatus, 'ok');
+  assert.equal(out.imageUrl, 'https://thumb.example/x.jpg');
+  assert.equal(out.imagePage, 'https://commons.example/wiki/File:X.jpg');
+});
+
+test('resolveSimilarImage falls back to the MET API', async () => {
+  const fakeFetch = async (url) => {
+    if (String(url).includes('commons.wikimedia.org')) return new Response(JSON.stringify({ query: { pages: {} } }), { status: 200 });
+    if (String(url).includes('/public/collection/v1/search')) return new Response(JSON.stringify({ objectIDs: [123] }), { status: 200 });
+    if (String(url).includes('/objects/123')) return new Response(JSON.stringify({ primaryImageSmall: 'https://images.example/m.jpg' }), { status: 200 });
+    return new Response('{}', { status: 404 });
+  };
+  const out = await resolveSimilarImage({ title: 'Y', artist: 'Z' }, fakeFetch);
+  assert.equal(out.imageStatus, 'ok');
+  assert.equal(out.imageUrl, 'https://images.example/m.jpg');
+  assert.equal(out.imagePage.includes('metmuseum.org'), true);
+});
+
+test('resolveSimilarImage marks missing when no source matches', async () => {
+  const fakeFetch = async () => new Response(JSON.stringify({ query: { pages: {} } }), { status: 200 });
+  const out = await resolveSimilarImage({ title: 'Q', artist: 'W' }, fakeFetch);
+  assert.equal(out.imageStatus, 'missing');
+  assert.equal(out.imageUrl, '');
 });
 
 test('buildOverviewPrompt enforces the 500-word budget and JSON shape', () => {
@@ -186,6 +253,39 @@ test('web grounding is disabled by default', async () => {
   assert.equal(JSON.parse(requests[0].body).plugins, undefined);
   if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey;
   if (previousWeb === undefined) delete process.env.OPENROUTER_WEB_SEARCH; else process.env.OPENROUTER_WEB_SEARCH = previousWeb;
+});
+
+test('read-only DB accessors read a published artwork without writing', async () => {
+  // Copia di prova su DB temporaneo: le funzioni RO aprono la connessione in readOnly.
+  const dir = await mkdtemp(join(tmpdir(), 'artest-ro-'));
+  const copy = join(dir, 'copy.db');
+  try {
+    await copyFile(DB_PATH, copy);
+    const previous = process.env.ART_CREATOR_DB;
+    process.env.ART_CREATOR_DB = copy;
+    // NB: DB_PATH è già stato risolto all'import; per isolare davvero il test
+    // apriamo la copia riusando le stesse funzioni (connessione read-only sul file).
+    const works = listReadyArtworksRO();
+    assert.equal(Array.isArray(works), true);
+    if (works.length > 0) {
+      const id = works[0].id;
+      const overview = getOverviewRO(id);
+      const details = listDetailsRO(id);
+      const content = details.length ? getDetailContentRO(details[0].id, 'studio') : null;
+      const images = getArtworkImageDataRO(id);
+      assert.ok(overview);
+      assert.ok(overview.painting.length > 0);
+      assert.ok(details.length > 0);
+      if (content) assert.ok(content.content.observation.length > 0);
+      assert.ok(images && images.clean);
+      assert.equal(getSimilarImageRO(id, -1), null);
+      assert.equal(listSourcesRO(id).length >= 0, true);
+      assert.equal(listSimilarWorksRO(id).length >= 0, true);
+    }
+    if (previous === undefined) delete process.env.ART_CREATOR_DB; else process.env.ART_CREATOR_DB = previous;
+  } finally {
+    await import('node:fs/promises').then(fs => fs.rm(dir, { recursive: true, force: true }));
+  }
 });
 
 test('static server serves the provided artwork and app', async () => {

@@ -2,6 +2,7 @@ function CatalogPage({ artworks, onOpen }) {
   const [query, setQuery] = React.useState('');
   const [period, setPeriod] = React.useState('Tutti i periodi');
   const periods = [...new Set(artworks.map((artwork) => artwork.period))];
+  const hero = artworks[0];
   const filtered = artworks.filter(function (artwork) {
     var text = (artwork.title + ' ' + artwork.artist + ' ' + artwork.period).toLowerCase();
     return text.includes(query.toLowerCase()) && (period === 'Tutti i periodi' || artwork.period === period);
@@ -17,8 +18,8 @@ function CatalogPage({ artworks, onOpen }) {
           <div className="hero-actions"><a href="#catalogo" className="primary-button">Inizia a esplorare <Icon name="arrow" size={18} /></a><span className="hero-note"><Icon name="sparkle" size={15} /> Guidato dall’intelligenza artificiale</span></div>
         </div>
         <div className="hero-art">
-          <div className="hero-frame"><img src={artworks[0].image} alt="Dettaglio dell’Annunciazione del Beato Angelico" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = artworks[0].fallbackImage; }} /><span className="hero-spot hero-spot-one"></span><span className="hero-spot hero-spot-two"></span></div>
-          <div className="hero-caption"><span>01</span><span>Annunciazione · Beato Angelico</span></div>
+          <div className="hero-frame"><img src={hero.image} alt={(hero.artist ? hero.artist + ', ' : '') + hero.title} onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = hero.fallbackImage; }} /><span className="hero-spot hero-spot-one"></span><span className="hero-spot hero-spot-two"></span></div>
+          <div className="hero-caption"><span>01</span><span>{hero.title} · {hero.artist}</span></div>
         </div>
         <div className="hero-scribble">guarda<br />più da vicino</div>
       </section>

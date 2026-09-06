@@ -10,13 +10,23 @@ export const UPLOAD_DIR = join(ROOT, 'uploads');
 mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const DB_PATH = process.env.ART_CREATOR_DB || join(DATA_DIR, 'art-creator.db');
-export const db = new DatabaseSync(DB_PATH);
+export const DB_PATH = process.env.ART_CREATOR_DB || join(DATA_DIR, 'art-creator.db');
 
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA foreign_keys = ON;');
+// Connessione di SCRITTURA (art-creator server): inizializzata in modo lazy da initSchema().
+// Quando il modulo è importato da artest (server di sola lettura), il DB non viene aperto in scrittura
+// e lo schema non viene toccato: artest usa le funzioni *RO qui sotto (connessione read-only per query).
+let _db = null;
+export function getDb() {
+  if (!_db) {
+    _db = new DatabaseSync(DB_PATH);
+    _db.exec('PRAGMA journal_mode = WAL;');
+    _db.exec('PRAGMA foreign_keys = ON;');
+  }
+  return _db;
+}
 
 export function initSchema() {
+  const db = getDb();
   db.exec(`
     CREATE TABLE IF NOT EXISTS artworks (
       id TEXT PRIMARY KEY,
@@ -57,6 +67,7 @@ export function initSchema() {
       curiosity TEXT NOT NULL DEFAULT '',
       comparisons TEXT NOT NULL DEFAULT '',
       open_questions TEXT NOT NULL DEFAULT '',
+      technique TEXT NOT NULL DEFAULT '',
       look_again TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'draft',
       model TEXT NOT NULL DEFAULT '',
@@ -87,24 +98,48 @@ export function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_details_artwork ON details(artwork_id);
     CREATE INDEX IF NOT EXISTS idx_content_detail ON detail_content(detail_id);
     CREATE INDEX IF NOT EXISTS idx_sources_artwork ON sources(artwork_id);
+
+    CREATE TABLE IF NOT EXISTS similar_works (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artwork_id TEXT NOT NULL REFERENCES artworks(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL DEFAULT '',
+      artist TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL DEFAULT '',
+      museum TEXT NOT NULL DEFAULT '',
+      caption TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      image_page TEXT NOT NULL DEFAULT '',
+      image_data BLOB,
+      image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      image_status TEXT NOT NULL DEFAULT 'missing',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_similar_artwork ON similar_works(artwork_id);
   `);
 
   // migrazione: le immagini vivono nel DB come BLOB (binary, non base64: più compatto e veloce).
   // Il file in uploads/ resta come scratch per PIL (crop/annotazione) e come fallback.
-  const cols = db.prepare('PRAGMA table_info(artworks)').all().map(c => c.name);
+  const cols = getDb().prepare('PRAGMA table_info(artworks)').all().map(c => c.name);
   if (!cols.includes('image_data')) db.exec('ALTER TABLE artworks ADD COLUMN image_data BLOB');
   if (!cols.includes('image_mime')) db.exec("ALTER TABLE artworks ADD COLUMN image_mime TEXT NOT NULL DEFAULT 'image/jpeg'");
   if (!cols.includes('annotated_data')) db.exec('ALTER TABLE artworks ADD COLUMN annotated_data BLOB');
   if (!cols.includes('annotated_mime')) db.exec("ALTER TABLE artworks ADD COLUMN annotated_mime TEXT NOT NULL DEFAULT 'image/jpeg'");
 
+  // migrazione: sezione "Tecnica e materia" (tab Approfondimento) sulle schede dei dettagli
+  const dcols = getDb().prepare('PRAGMA table_info(detail_content)').all().map(c => c.name);
+  if (!dcols.includes('technique')) db.exec("ALTER TABLE detail_content ADD COLUMN technique TEXT NOT NULL DEFAULT ''");
+
   // backfill: opere esistenti (solo file su disco) -> carica il BLOB una tantum
-  const missing = db.prepare("SELECT id, image_path FROM artworks WHERE image_data IS NULL AND image_path != ''").all();
+  const missing = getDb().prepare("SELECT id, image_path FROM artworks WHERE image_data IS NULL AND image_path != ''").all();
   for (const row of missing) {
     const filePath = join(ROOT, row.image_path);
     if (existsSync(filePath)) {
       const buf = readFileSync(filePath);
       const mime = buf.length > 3 && buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : 'image/jpeg';
-      db.prepare('UPDATE artworks SET image_data = ?, image_mime = ? WHERE id = ?').run(buf, mime, row.id);
+      getDb().prepare('UPDATE artworks SET image_data = ?, image_mime = ? WHERE id = ?').run(buf, mime, row.id);
     }
   }
 }
@@ -134,18 +169,18 @@ function rowToArtwork(row) {
 }
 
 export function createArtwork({ id, title, artist, date, period, technique, institution, location, imagePath, imageWidth = 0, imageHeight = 0, imageData = null, imageMime = 'image/jpeg' }) {
-  db.prepare(`INSERT INTO artworks (id, title, artist, date, period, technique, institution, location, image_path, image_data, image_mime, image_width, image_height, status, created_at, updated_at)
+  getDb().prepare(`INSERT INTO artworks (id, title, artist, date, period, technique, institution, location, image_path, image_data, image_mime, image_width, image_height, status, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`)
     .run(id, title || '', artist || '', date || '', period || '', technique || '', institution || '', location || '', imagePath, imageData, imageMime, imageWidth, imageHeight, now(), now());
   return getArtwork(id);
 }
 
-export function getArtwork(id) {
-  return rowToArtwork(db.prepare('SELECT * FROM artworks WHERE id = ?').get(id));
+export function getArtwork(id, conn) {
+  return rowToArtwork((conn || getDb()).prepare('SELECT * FROM artworks WHERE id = ?').get(id));
 }
 
-export function listArtworks() {
-  return db.prepare('SELECT * FROM artworks ORDER BY created_at DESC').all().map(rowToArtwork);
+export function listArtworks(conn) {
+  return (conn || getDb()).prepare('SELECT * FROM artworks ORDER BY created_at DESC').all().map(rowToArtwork);
 }
 
 export function updateArtwork(id, patch) {
@@ -161,18 +196,18 @@ export function updateArtwork(id, patch) {
     location: patch.location ?? current.location,
     status: patch.status ?? current.status
   };
-  db.prepare(`UPDATE artworks SET title=?, artist=?, date=?, period=?, technique=?, institution=?, location=?, status=?, updated_at=? WHERE id=?`)
+  getDb().prepare(`UPDATE artworks SET title=?, artist=?, date=?, period=?, technique=?, institution=?, location=?, status=?, updated_at=? WHERE id=?`)
     .run(merged.title, merged.artist, merged.date, merged.period, merged.technique, merged.institution, merged.location, merged.status, now(), id);
   return getArtwork(id);
 }
 
 export function deleteArtwork(id) {
-  db.prepare('DELETE FROM artworks WHERE id = ?').run(id);
+  getDb().prepare('DELETE FROM artworks WHERE id = ?').run(id);
 }
 
 // --- immagini BLOB (pulita + annotata) ---
-export function getArtworkImageData(id) {
-  const row = db.prepare('SELECT image_data, image_mime, annotated_data, annotated_mime FROM artworks WHERE id = ?').get(id);
+export function getArtworkImageData(id, conn) {
+  const row = (conn || getDb()).prepare('SELECT image_data, image_mime, annotated_data, annotated_mime FROM artworks WHERE id = ?').get(id);
   if (!row) return null;
   return {
     clean: row.image_data ? { data: row.image_data, mime: row.image_mime || 'image/jpeg' } : null,
@@ -180,22 +215,22 @@ export function getArtworkImageData(id) {
   };
 }
 export function setAnnotatedImage(id, data, mime = 'image/jpeg') {
-  db.prepare('UPDATE artworks SET annotated_data = ?, annotated_mime = ?, updated_at = ? WHERE id = ?').run(data, mime, now(), id);
+  getDb().prepare('UPDATE artworks SET annotated_data = ?, annotated_mime = ?, updated_at = ? WHERE id = ?').run(data, mime, now(), id);
 }
 export function setArtworkImageData(id, data, mime = 'image/jpeg') {
-  db.prepare('UPDATE artworks SET image_data = ?, image_mime = ?, updated_at = ? WHERE id = ?').run(data, mime, now(), id);
+  getDb().prepare('UPDATE artworks SET image_data = ?, image_mime = ?, updated_at = ? WHERE id = ?').run(data, mime, now(), id);
 }
 
 // --- dettagli (hotspot) ---
 export function addDetail(artworkId, { title, category, x, y, width, height, sortOrder = 0 }) {
-  const result = db.prepare(`INSERT INTO details (artwork_id, title, category, x, y, width, height, sort_order)
+  const result = getDb().prepare(`INSERT INTO details (artwork_id, title, category, x, y, width, height, sort_order)
                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(artworkId, title, category || '', x, y, width, height, sortOrder);
   return getDetail(result.lastInsertRowid);
 }
 
 export function getDetail(detailId) {
-  const row = db.prepare('SELECT * FROM details WHERE id = ?').get(detailId);
+  const row = getDb().prepare('SELECT * FROM details WHERE id = ?').get(detailId);
   if (!row) return null;
   return {
     id: row.id,
@@ -208,8 +243,8 @@ export function getDetail(detailId) {
   };
 }
 
-export function listDetails(artworkId) {
-  return db.prepare('SELECT * FROM details WHERE artwork_id = ? ORDER BY sort_order, id').all(artworkId)
+export function listDetails(artworkId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM details WHERE artwork_id = ? ORDER BY sort_order, id').all(artworkId)
     .map(row => ({
       id: row.id,
       artworkId: row.artwork_id,
@@ -222,7 +257,7 @@ export function listDetails(artworkId) {
 }
 
 export function replaceDetails(artworkId, items) {
-  db.prepare('DELETE FROM details WHERE artwork_id = ?').run(artworkId);
+  getDb().prepare('DELETE FROM details WHERE artwork_id = ?').run(artworkId);
   return items.map((item, index) => {
     const region = item.region || {};
     return addDetail(artworkId, {
@@ -247,26 +282,26 @@ export function updateDetail(detailId, patch) {
       else { sets.push(`${field}=?`); values.push(Number(patch[field])); }
     }
   }
-  if (sets.length) { values.push(detailId); db.prepare(`UPDATE details SET ${sets.join(', ')} WHERE id=?`).run(...values); }
+  if (sets.length) { values.push(detailId); getDb().prepare(`UPDATE details SET ${sets.join(', ')} WHERE id=?`).run(...values); }
   return getDetail(detailId);
 }
 
 // --- contenuto per dettaglio e tab ---
 export function saveDetailContent(detailId, tab, content, meta = {}) {
-  db.prepare(`INSERT INTO detail_content (detail_id, tab, observation, meaning, relation, curiosity, comparisons, open_questions, look_again, status, model, prompt_version, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  getDb().prepare(`INSERT INTO detail_content (detail_id, tab, observation, meaning, relation, curiosity, comparisons, open_questions, technique, look_again, status, model, prompt_version, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(detail_id, tab) DO UPDATE SET
                 observation=excluded.observation, meaning=excluded.meaning, relation=excluded.relation,
                 curiosity=excluded.curiosity, comparisons=excluded.comparisons, open_questions=excluded.open_questions,
-                look_again=excluded.look_again, status=excluded.status, model=excluded.model,
+                technique=excluded.technique, look_again=excluded.look_again, status=excluded.status, model=excluded.model,
                 prompt_version=excluded.prompt_version, updated_at=excluded.updated_at`)
     .run(detailId, tab, content.observation || '', content.meaning || '', content.relation || '',
          content.curiosity || '', content.comparisons || '', content.openQuestions || '',
-         content.lookAgain || '', meta.status || 'generated', meta.model || '', meta.promptVersion || '', now());
+         content.technique || '', content.lookAgain || '', meta.status || 'generated', meta.model || '', meta.promptVersion || '', now());
 }
 
-export function getDetailContent(detailId, tab) {
-  const row = db.prepare('SELECT * FROM detail_content WHERE detail_id = ? AND tab = ?').get(detailId, tab);
+export function getDetailContent(detailId, tab, conn) {
+  const row = (conn || getDb()).prepare('SELECT * FROM detail_content WHERE detail_id = ? AND tab = ?').get(detailId, tab);
   if (!row) return null;
   return {
     detailId: row.detail_id,
@@ -278,6 +313,7 @@ export function getDetailContent(detailId, tab) {
       curiosity: row.curiosity,
       comparisons: row.comparisons,
       openQuestions: row.open_questions,
+      technique: row.technique,
       lookAgain: row.look_again
     },
     status: row.status,
@@ -289,7 +325,7 @@ export function getDetailContent(detailId, tab) {
 
 // --- overview ---
 export function saveOverview(artworkId, { painting, artist }, meta = {}) {
-  db.prepare(`INSERT INTO overview (artwork_id, painting, artist, status, model, prompt_version, updated_at)
+  getDb().prepare(`INSERT INTO overview (artwork_id, painting, artist, status, model, prompt_version, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(artwork_id) DO UPDATE SET
                 painting=excluded.painting, artist=excluded.artist, status=excluded.status,
@@ -297,22 +333,68 @@ export function saveOverview(artworkId, { painting, artist }, meta = {}) {
     .run(artworkId, painting || '', artist || '', meta.status || 'generated', meta.model || '', meta.promptVersion || '', now());
 }
 
-export function getOverview(artworkId) {
-  const row = db.prepare('SELECT * FROM overview WHERE artwork_id = ?').get(artworkId);
+export function getOverview(artworkId, conn) {
+  const row = (conn || getDb()).prepare('SELECT * FROM overview WHERE artwork_id = ?').get(artworkId);
   if (!row) return null;
   return { artworkId: row.artwork_id, painting: row.painting, artist: row.artist, status: row.status, updatedAt: row.updated_at };
 }
 
 // --- fonti ---
 export function addSource({ artworkId, detailId = null, title, url, type }) {
-  const result = db.prepare('INSERT INTO sources (artwork_id, detail_id, title, url, type) VALUES (?, ?, ?, ?, ?)')
+  const result = getDb().prepare('INSERT INTO sources (artwork_id, detail_id, title, url, type) VALUES (?, ?, ?, ?, ?)')
     .run(artworkId, detailId, title || '', url || '', type || '');
   return result.lastInsertRowid;
 }
 
-export function listSources(artworkId) {
-  return db.prepare('SELECT * FROM sources WHERE artwork_id = ? ORDER BY detail_id IS NOT NULL, id').all(artworkId)
+export function listSources(artworkId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM sources WHERE artwork_id = ? ORDER BY detail_id IS NOT NULL, id').all(artworkId)
     .map(row => ({ id: row.id, detailId: row.detail_id, title: row.title, url: row.url, type: row.type }));
+}
+
+// --- opere simili (carousel) ---
+function rowToSimilar(row) {
+  if (!row) return null;
+  return {
+    id: row.id, artworkId: row.artwork_id, sortOrder: row.sort_order,
+    title: row.title, artist: row.artist, date: row.date, museum: row.museum,
+    caption: row.caption, imageUrl: row.image_url, imagePage: row.image_page,
+    hasImage: Boolean(row.image_data), imageStatus: row.image_status, status: row.status
+  };
+}
+export function replaceSimilarWorks(artworkId, works) {
+  getDb().prepare('DELETE FROM similar_works WHERE artwork_id = ?').run(artworkId);
+  const insert = getDb().prepare(`INSERT INTO similar_works (artwork_id, sort_order, title, artist, date, museum, caption, image_url, image_page, image_data, image_mime, image_status, status, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  (Array.isArray(works) ? works : []).forEach((w, index) => {
+    insert.run(artworkId, index, w.title || '', w.artist || '', w.date || '', w.museum || '', w.caption || '',
+      w.imageUrl || '', w.imagePage || '', w.imageData || null, w.imageMime || 'image/jpeg',
+      w.imageStatus || 'missing', w.status || 'draft', now());
+  });
+  return listSimilarWorks(artworkId);
+}
+export function listSimilarWorks(artworkId) {
+  return getDb().prepare('SELECT * FROM similar_works WHERE artwork_id = ? ORDER BY sort_order, id').all(artworkId).map(rowToSimilar);
+}
+export function getSimilarImage(artworkId, similarId) {
+  const row = getDb().prepare('SELECT image_data, image_mime FROM similar_works WHERE id = ? AND artwork_id = ?').get(similarId, artworkId);
+  return (row && row.image_data) ? { data: row.image_data, mime: row.image_mime } : null;
+}
+export function updateSimilarWork(similarId, patch) {
+  const map = { title: 'title', artist: 'artist', date: 'date', museum: 'museum', caption: 'caption', imageUrl: 'image_url', imagePage: 'image_page', imageStatus: 'image_status', imageData: 'image_data', imageMime: 'image_mime', sortOrder: 'sort_order' };
+  const sets = [];
+  const values = [];
+  for (const [key, col] of Object.entries(map)) {
+    if (patch[key] !== undefined) { sets.push(col + '=?'); values.push(patch[key]); }
+  }
+  if (sets.length) {
+    values.push(now(), similarId);
+    getDb().prepare(`UPDATE similar_works SET ${sets.join(', ')}, updated_at=? WHERE id=?`).run(...values);
+  }
+  return rowToSimilar(getDb().prepare('SELECT * FROM similar_works WHERE id = ?').get(similarId));
+}
+export function clearSimilarImage(similarId) {
+  getDb().prepare("UPDATE similar_works SET image_data = NULL, image_mime = 'image/jpeg', image_status = 'missing', image_url = '', image_page = '', updated_at = ? WHERE id = ?").run(now(), similarId);
+  return rowToSimilar(getDb().prepare('SELECT * FROM similar_works WHERE id = ?').get(similarId));
 }
 
 // --- lettura completa (per viewer / publish) ---
@@ -325,14 +407,14 @@ export function getFullArtwork(id) {
     const approfondimento = getDetailContent(detail.id, 'approfondimento');
     return { ...detail, tabs: { studio, approfondimento } };
   });
-  return { ...artwork, overview, details, sources: listSources(id) };
+  return { ...artwork, overview, details, sources: listSources(id), similarWorks: listSimilarWorks(id) };
 }
 
 export function countStatus() {
   return {
-    artworks: db.prepare('SELECT COUNT(*) AS c FROM artworks').get().c,
-    ready: db.prepare("SELECT COUNT(*) AS c FROM artworks WHERE status = 'ready'").get().c,
-    generated: db.prepare("SELECT COUNT(*) AS c FROM artworks WHERE status = 'generated'").get().c
+    artworks: getDb().prepare('SELECT COUNT(*) AS c FROM artworks').get().c,
+    ready: getDb().prepare("SELECT COUNT(*) AS c FROM artworks WHERE status = 'ready'").get().c,
+    generated: getDb().prepare("SELECT COUNT(*) AS c FROM artworks WHERE status = 'generated'").get().c
   };
 }
 
@@ -340,8 +422,9 @@ export function countStatus() {
 export function approveArtwork(id) {
   const artwork = getArtwork(id);
   if (!artwork) return null;
-  db.prepare("UPDATE detail_content SET status = 'approved' WHERE detail_id IN (SELECT id FROM details WHERE artwork_id = ?)").run(id);
-  db.prepare("UPDATE overview SET status = 'approved' WHERE artwork_id = ?").run(id);
+  getDb().prepare("UPDATE detail_content SET status = 'approved' WHERE detail_id IN (SELECT id FROM details WHERE artwork_id = ?)").run(id);
+  getDb().prepare("UPDATE overview SET status = 'approved' WHERE artwork_id = ?").run(id);
+  getDb().prepare("UPDATE similar_works SET status = 'approved' WHERE artwork_id = ?").run(id);
   updateArtwork(id, { status: 'ready' });
   return getFullArtwork(id);
 }
@@ -375,6 +458,70 @@ export function publishArtwork(id) {
         approfondimento: detail.tabs.approfondimento ? detail.tabs.approfondimento.content : null
       }
     })),
-    sources: full.sources.map(s => ({ title: s.title, url: s.url, type: s.type }))
+    sources: full.sources.map(s => ({ title: s.title, url: s.url, type: s.type })),
+    similarWorks: full.similarWorks.map(s => ({
+      id: s.id,
+      title: s.title,
+      artist: s.artist,
+      date: s.date,
+      museum: s.museum,
+      caption: s.caption,
+      imageUrl: s.hasImage ? '/api/artworks/' + full.id + '/similar/' + s.id + '/image' : null,
+      sourceUrl: s.imagePage || s.imageUrl,
+      imageStatus: s.imageStatus
+    }))
   };
+}
+
+// ---------------------------------------------------------------------------
+// Accesso di SOLA LETTURA per artest (viewer): apre una connessione read-only
+// al DB di art-creator senza MAI scrivere o toccare lo schema. Ogni chiamata
+// apre/chiude la connessione: nessun lock persistente verso il server autore.
+// ---------------------------------------------------------------------------
+function openReadonly() {
+  return new DatabaseSync(DB_PATH, { readOnly: true });
+}
+
+export function listReadyArtworksRO() {
+  const conn = openReadonly();
+  try {
+    return conn.prepare("SELECT * FROM artworks WHERE status = 'ready' ORDER BY updated_at DESC").all().map(rowToArtwork);
+  } finally { conn.close(); }
+}
+
+export function getArtworkImageDataRO(id) {
+  const conn = openReadonly();
+  try {
+    return getArtworkImageData(id, conn);
+  } finally { conn.close(); }
+}
+
+export function getOverviewRO(id) {
+  const conn = openReadonly();
+  try { return getOverview(id, conn); } finally { conn.close(); }
+}
+
+export function listDetailsRO(artworkId) {
+  const conn = openReadonly();
+  try { return listDetails(artworkId, conn); } finally { conn.close(); }
+}
+
+export function getDetailContentRO(detailId, tab) {
+  const conn = openReadonly();
+  try { return getDetailContent(detailId, tab, conn); } finally { conn.close(); }
+}
+
+export function listSourcesRO(artworkId) {
+  const conn = openReadonly();
+  try { return listSources(artworkId, conn); } finally { conn.close(); }
+}
+
+export function listSimilarWorksRO(artworkId) {
+  const conn = openReadonly();
+  try { return listSimilarWorks(artworkId, conn); } finally { conn.close(); }
+}
+
+export function getSimilarImageRO(artworkId, similarId) {
+  const conn = openReadonly();
+  try { return getSimilarImage(artworkId, similarId); } finally { conn.close(); }
 }

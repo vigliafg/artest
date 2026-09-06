@@ -1,17 +1,26 @@
 # Leggi l’Opera d’Arte
 
-App didattica React per esplorare l’**Annunciazione del Beato Angelico** attraverso hotspot, selezione libera e analisi multimodale con il modello Meta Muse Spark tramite OpenRouter.
+Viewer didattico React per esplorare opere d’arte **dettaglio per dettaglio**. La collezione e tutti i contenuti (presentazione, sezioni per dettaglio su due livelli, opere simili, immagini) arrivano dalla **scheda didattica pubblicata con art-creator**: il viewer legge in sola lettura il database SQLite e presenta i testi già verificati, senza generazione al volo.
 
 ## Architettura
 
 - `index.html`: entry point browser e UI React compilata in-browser per questa workspace.
-- `src/components/`: componenti React separati per catalogo, viewer, analisi e schermata di esplorazione.
-- `src/data.js`: catalogo e annotazioni editoriali.
-- `src/api/nvidiaAnalysis.js`: client frontend dell’API `/api/analyze`.
-- `server.py`: server statico e proxy server-side verso OpenRouter.
-- `test_server.py`: test automatici del proxy e del parsing della risposta.
+- `src/styles.css`: fogli di stile principali (tabs, carosello opere simili, pannelli).
+- `src/components/`: componenti React per catalogo, viewer, pannello di lettura e schermata di esplorazione.
+- `src/data.js`: opera dimostrativa inclusa, usata solo come ripiego offline quando non ci sono schede pubblicate.
+- `src/api/nvidiaAnalysis.js`: client legacy per l’analisi live (usato dal flusso dimostrativo).
+- `src/App.jsx`: carica la libreria da `GET /api/library` e la scheda completa da `GET /api/artworks/:id`.
+- `art-creator/`: app sorella che genera e pubblica le schede (v. il suo README).
+- `server.mjs`: server statico + API. Oltre agli endpoint di analisi live, espone la **libreria pubblicata** leggendo il DB di art-creator **in sola lettura** (connessioni `readOnly`, zero scritture).
+- `test_server.mjs`: test automatici del backend e degli accessor read-only.
 
-La chiave OpenRouter **non deve mai essere inserita in `index.html`, in `src/` o in un commit**. Copiare `.env.example` in `.env.local` e impostare `OPENROUTER_API_KEY`; il server carica il file automaticamente all’avvio.
+### Da dove vengono i contenuti mostrati
+
+1. **Libreria** — `GET /api/library` elenca le opere con stato `ready` nel DB di art-creator (`art-creator/data/art-creator.db`), con le immagini servite dal BLOB.
+2. **Scheda completa** — all’apertura di un’opera il browser chiama `GET /api/artworks/:id`: il server restituisce metadati, immagine pulita + URL dell’immagine annotata, `overview` (dipinto/artista), `details` con i testi `studio`/`approfondimento` per ciascun riquadro, fonti e le 10 `similarWorks` (thumbnail BLOB).
+3. **Esplorazione** — la selezione di un dettaglio (dall’immagine o dalle chip) apre le due tab **Studio del dettaglio** e **Approfondimento** con le sezioni corrispondenti già compilate nella scheda; in cima alla pagina le tab **Presentazione | Opere simili** mostrano i testi e il carosello delle opere con lo stesso soggetto.
+
+La chiave OpenRouter **non deve mai essere inserita in `index.html`, in `src/` o in un commit**. Copiare `.env.example` in `.env.local` e impostare `OPENROUTER_API_KEY`; il server carica il file automaticamente all’avvio. La chiave serve solo al flusso legacy di generazione live (analisi/overview/opere simili on-demand) e ad art-creator: il viewer delle schede pubblicate funziona anche senza.
 
 ## Avvio locale
 
@@ -63,7 +72,9 @@ https://openrouter.ai/api/v1/chat/completions
 
 Può essere sostituito tramite `OPENROUTER_ENDPOINT` per usare un endpoint compatibile.
 
-## Flusso reale
+## Flusso legacy (generazione live, per la demo inclusa e per prove)
+
+I flussi sotto restano disponibili e vengono usati solo quando un’opera non ha contenuti pubblicati nel DB.
 
 ### Presentazione in cima alla pagina (`POST /api/overview`)
 

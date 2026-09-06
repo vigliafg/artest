@@ -7,4 +7,7 @@ art-creator/data/
 art-creator/uploads/
 
 # Freebuff preview server logs
-.freebuff/preview-*.log
+.freebuff/*.log
+
+# Backup locale (non tracciato)
+artest_backup.zip
