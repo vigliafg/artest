@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { initSchema, getDb, UPLOAD_DIR, ROOT as APP_ROOT } from './db.mjs';
 import {
   createArtwork, getArtwork, listArtworks, updateArtwork, deleteArtwork,
-  addDetail, listDetails, getDetail, replaceDetails, updateDetail,
+  addDetail, listDetails, getDetail, replaceDetails, updateDetail, deleteDetail, approveDetail,
   saveDetailContent, getDetailContent,
   saveOverview, getOverview,
   addSource, listSources, getFullArtwork, approveArtwork, publishArtwork,
@@ -386,6 +386,97 @@ function handleApi(req, res, urlPath) {
     }).catch(e => { console.error('ERR genDetail:', e); err(res, 500, e.message); });
   }
 
+  // POST /api/artworks/:id/details/read — lettura di un riquadro disegnato a mano (nessuna scrittura nel DB)
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'details' && parts[4] === 'read') {
+    return readBody(req).then(async (input) => {
+      const artwork = getArtwork(parts[2]);
+      if (!artwork) return err(res, 404, 'Opera non trovata');
+      const apiKey = getOpenRouterApiKey();
+      if (!apiKey) return err(res, 503, 'OPENROUTER_API_KEY non configurata');
+      const fullImage = await imageDataUriOf(artwork);
+      const reading = await readManualDetail(artwork, input.selectionImage || null, fullImage, apiKey);
+      return json(res, 200, { reading });
+    }).catch(e => { console.error('ERR manual read:', e); err(res, 500, e.message); });
+  }
+
+  // POST /api/artworks/:id/details — aggiunta MANUALE: salva il box disegnato, genera entrambe le tab
+  // con la descrizione della lettura condivisa, e aggiorna l'immagine annotata.
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'details') {
+    return readBody(req).then(async (input) => {
+      const artwork = getArtwork(parts[2]);
+      if (!artwork) return err(res, 404, 'Opera non trovata');
+      const apiKey = getOpenRouterApiKey();
+      if (!apiKey) return err(res, 503, 'OPENROUTER_API_KEY non configurata');
+      const region = input.region || {};
+      let x = clamp01(region.x), y = clamp01(region.y);
+      let width = Math.max(0.03, Math.min(1 - x, Number(region.width) || 0.2));
+      let height = Math.max(0.03, Math.min(1 - y, Number(region.height) || 0.2));
+      x = Math.max(0, Math.min(1 - width, x));
+      y = Math.max(0, Math.min(1 - height, y));
+      const detail = addDetail(artwork.id, {
+        title: String(input.title || 'Dettaglio manuale').trim().slice(0, 90) || 'Dettaglio manuale',
+        category: normalizeCategory(input.category),
+        x, y, width, height,
+        sortOrder: listDetails(artwork.id).length
+      });
+      let annotated = null;
+      try {
+        const ann = await renderAnnotated(artwork);
+        if (ann) {
+          setAnnotatedImage(artwork.id, ann.data, 'image/jpeg');
+          annotated = { url: '/api/artworks/' + artwork.id + '/image-annotated', boxes: ann.boxes, captions: ann.captions };
+        }
+      } catch (e) { console.error('ERR annotate (nuovo dettaglio):', e); }
+      const fullImage = await imageDataUriOf(artwork);
+      let vision = null;
+      if (input.reading && String(input.reading.description || '').trim()) {
+        vision = { description: String(input.reading.description).trim(), category: normalizeCategory(input.reading.category) || detail.category, subjectFound: input.reading.subjectFound === true };
+      } else {
+        const reading = await readManualDetail(artwork, input.selectionImage || null, fullImage, apiKey);
+        vision = { description: reading.description, category: reading.category, subjectFound: reading.subjectFound };
+      }
+      const runTab = async (tab) => {
+        const level = tab === 'approfondimento' ? 'Approfondimento' : 'Scuola secondaria';
+        const result = await analyzeDetail({ artwork, detail, selectionImage: input.selectionImage || null, fullImage, level, apiKey, sharedVisionData: vision });
+        saveDetailContent(detail.id, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-4-manuale' });
+        return getDetailContent(detail.id, tab);
+      };
+      const [studioRow, approfondimentoRow] = await Promise.all([runTab('studio'), runTab('approfondimento')]);
+      return json(res, 200, { detail: getDetail(detail.id), content: { studio: studioRow, approfondimento: approfondimentoRow }, annotated });
+    }).catch(e => { console.error('ERR manual add:', e); err(res, 500, e.message); });
+  }
+
+  // POST /api/details/:id/approve — "Conserva e memorizza": approva il dettaglio manuale e i suoi contenuti
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'details' && parts[3] === 'approve') {
+    const detail = getDetail(Number(parts[2]));
+    if (!detail) return err(res, 404, 'Dettaglio non trovato');
+    return Promise.resolve().then(() => {
+      approveDetail(detail.id);
+      return json(res, 200, { ok: true, detail: getDetail(detail.id) });
+    }).catch(e => err(res, 500, e.message));
+  }
+
+  // DELETE /api/details/:id — rimuove un dettaglio manuale (o automatico) e rigenera l'annotata
+  if (method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'details') {
+    const detail = getDetail(Number(parts[2]));
+    if (!detail) return err(res, 404, 'Dettaglio non trovato');
+    return Promise.resolve().then(async () => {
+      const artwork = getArtwork(detail.artworkId);
+      deleteDetail(detail.id);
+      let annotated = null;
+      if (artwork) {
+        try {
+          const ann = await renderAnnotated(artwork);
+          if (ann) {
+            setAnnotatedImage(artwork.id, ann.data, 'image/jpeg');
+            annotated = { url: '/api/artworks/' + artwork.id + '/image-annotated', boxes: ann.boxes, captions: ann.captions };
+          }
+        } catch (e) { console.error('ERR annotate (rimozione dettaglio):', e); }
+      }
+      return json(res, 200, { ok: true, annotated });
+    }).catch(e => err(res, 500, e.message));
+  }
+
   // POST /api/artworks/:id/approve — genera l'immagine annotata (riquadri + didascalie) poi approva tutto
   if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'approve') {
     return Promise.resolve().then(async () => {
@@ -498,6 +589,30 @@ Se non riconosci con certezza l’opera o qualche campo, usa stringhe vuote per 
   };
 }
 function clamp01(v) { return Math.max(0, Math.min(1, Number(v) || 0)); }
+const VALID_CATEGORIES = ['Figura', 'Composizione', 'Simbolo', 'Luce', 'Colore', 'Oggetto', 'Architettura'];
+function normalizeCategory(v) {
+  const value = String(v || '').trim();
+  return VALID_CATEGORIES.includes(value) ? value : '';
+}
+// Lettura di un riquadro disegnato a mano: verifica che contenga un soggetto,
+// propone la categoria e produce la descrizione visiva usata per i testi.
+async function readManualDetail(artwork, selectionImage, fullImage, apiKey) {
+  const prompt = `Sei uno storico dell’arte italiano. L’utente ha disegnato a mano un riquadro sull’immagine dell’opera "${artwork.title || ''}" di ${artwork.artist || ''} e vuole trasformarlo in un nuovo dettaglio didattico da esplorare. Guarda il RITAGLIO selezionato e usa l’immagine intera solo come contesto per capire dove si trova.
+
+Rispondi SOLO con JSON valido, senza markdown né testo fuori dall’oggetto:
+{"subjectFound":true|false,"category":"Figura|Composizione|Simbolo|Luce|Colore|Oggetto|Architettura","description":"descrizione visiva dettagliata in italiano di ciò che si vede nel riquadro (max 180 parole, SOLO elementi osservabili)"}
+
+Regole: subjectFound=false se il riquadro è vuoto, privo di soggetto, sfocato o mostra solo una superficie uniforme senza elementi riconoscibili; in quel caso category deve essere la stringa vuota, ma descrivi comunque ciò che si vede.`;
+  const parts = [{ type: 'text', text: prompt }];
+  if (selectionImage) parts.push({ type: 'image_url', image_url: { url: selectionImage } });
+  if (fullImage) parts.push({ type: 'text', text: 'Contesto: immagine intera dell’opera.' }, { type: 'image_url', image_url: { url: fullImage } });
+  const raw = await callModel(VISION_MODEL, parts, apiKey);
+  let d = raw && raw.data ? raw.data : {};
+  if (typeof d === 'string') d = { description: d };
+  const description = String(d.description || '').trim().slice(0, 4000);
+  const subjectFound = d.subjectFound === true || d.subjectFound === 'true';
+  return { subjectFound, category: subjectFound ? normalizeCategory(d.category) : '', description };
+}
 
 // ---------- generazione AI (contenuto per dettaglio) ----------
 function detailInput(artwork, detail, level) {

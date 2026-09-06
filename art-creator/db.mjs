@@ -286,6 +286,16 @@ export function updateDetail(detailId, patch) {
   return getDetail(detailId);
 }
 
+export function deleteDetail(detailId) {
+  getDb().prepare('DELETE FROM details WHERE id = ?').run(detailId);
+}
+
+export function approveDetail(detailId) {
+  getDb().prepare("UPDATE detail_content SET status = 'approved' WHERE detail_id = ?").run(detailId);
+  getDb().prepare("UPDATE details SET status = 'approved' WHERE id = ?").run(detailId);
+  return getDetail(detailId);
+}
+
 // --- contenuto per dettaglio e tab ---
 export function saveDetailContent(detailId, tab, content, meta = {}) {
   getDb().prepare(`INSERT INTO detail_content (detail_id, tab, observation, meaning, relation, curiosity, comparisons, open_questions, technique, look_again, status, model, prompt_version, updated_at)

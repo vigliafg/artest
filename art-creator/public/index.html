@@ -126,6 +126,27 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .spot-edit .h.s{left:50%;bottom:-7px;margin-left:-6px;cursor:ns-resize}
 .spot-edit .h.sw{left:-7px;bottom:-7px;cursor:nesw-resize}
 .spot-edit .h.w{left:-7px;top:50%;margin-top:-6px;cursor:ew-resize}
+.nd-overlay{z-index:6}
+.nd-capture{position:absolute;inset:0;z-index:7;cursor:crosshair;pointer-events:auto;touch-action:none}
+.nd-tip{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:8;background:rgba(23,52,74,.88);color:#fff;font-size:11px;font-weight:600;padding:7px 14px;border-radius:20px;pointer-events:none;white-space:nowrap}
+.nd-draw{border:2px dashed var(--coral);background:rgba(220,112,86,.10)}
+.bx.nd-new{border-style:solid;background:rgba(220,112,86,.10)}
+.nd-panel{background:var(--white);border:1px solid #f0c9bc;border-left:4px solid var(--coral);border-radius:12px;padding:14px 16px;margin:12px 0 2px;box-shadow:0 6px 18px rgba(30,42,44,.06)}
+.nd-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nd-p{font-size:12px;color:var(--ink);line-height:1.5;display:inline-flex;gap:8px;align-items:center}
+.nd-field-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.nd-field-row .field{margin:0}
+.nd-chip{font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;margin-top:10px;display:inline-block}
+.nd-chip.ok{background:#eef6f1;color:#47715f;border:1px solid #cfe5da}
+.nd-chip.warn{background:#fdf6e8;color:#8a6a2f;border:1px solid #ecd9b0}
+.nd-banner{border-radius:10px;padding:12px 14px;margin:2px 0 12px;display:flex;gap:10px;align-items:flex-start;font-size:12px;line-height:1.55;border:1px solid}
+.nd-banner .nd-ico{font-size:16px;line-height:1.3}
+.nd-banner strong{font-size:12px;display:block}
+.nd-banner p{margin:3px 0 0;font-size:11.5px}
+.nd-banner.complete{background:#eef6f1;border-color:#cfe5da;color:#35624e}
+.nd-banner.partial{background:#fdf6e8;border-color:#ecd9b0;color:#7a5d22}
+.nd-banner.insufficient{background:#fbeae7;border-color:#ecc9c2;color:#8f3123}
+.nd-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
 @media(max-width:760px){.img-panel{grid-template-columns:1fr}.cap-rail{max-height:200px}}
 /* feedback salvataggio */
 .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:#1d5a43;color:#fff;padding:15px 24px;border-radius:30px;font-size:13px;font-weight:700;display:flex;gap:10px;align-items:center;box-shadow:0 12px 34px rgba(0,0,0,.25);transition:.35s;z-index:50;pointer-events:none}
@@ -197,6 +218,7 @@ function api(path, opts) {
 function post(path, body) { return api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
 function put(path, body) { return api(path, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
 function patch(path, body) { return api(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
+function del(path) { return api(path, { method: 'DELETE' }); }
 
 /* ================= util ================= */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -337,7 +359,8 @@ function renderStudio() {
 
     // --- STEP 3: dettagli + overview ---
     html += '<div class="card"><div class="step-head"><span class="eyebrow">Passo 3 · Dettagli notevoli</span>' +
-      '<span style="display:flex;gap:8px"><button class="btn small" id="btnDetails">✨ Proponi dettagli</button>' +
+      '<span style="display:flex;gap:8px"><button class="btn small" id="btnAddDetail">➕ Aggiungi dettaglio</button>' +
+      '<button class="btn small" id="btnDetails">✨ Proponi dettagli</button>' +
       '<button class="btn small primary" id="btnGenAll">⚡ Genera tutte le tab</button></span></div>';
     html += '<div id="detailsArea"></div></div>';
 
@@ -377,6 +400,8 @@ function bindStudio(s) {
     if (simBtn) simBtn.onclick = function () { runSimilar(); };
     var editBtn = document.getElementById('btnEditBoxes');
     if (editBtn) editBtn.onclick = function () { toggleBoxEditor(); };
+    var addBtn = document.getElementById('btnAddDetail');
+    if (addBtn) addBtn.onclick = function () { openNewDetail(); };
     var p4 = appEl.querySelectorAll('[data-p4]');
     p4.forEach(function (el) {
       el.onclick = function () {
@@ -523,7 +548,11 @@ function renderDetailEditor(detail) {
   var s = studio;
   var keys = sectionOf(s.activeTab);
   var tabData = detail.tabs && detail.tabs[s.activeTab];
-  var html = '<div class="content-tabs">';
+  var html = '';
+  if (s.pendingNew && String(s.pendingNew.id) === String(detail.id)) {
+    html += ndBannerHtml(s.pendingNew.info || { level: 'partial', filled: 0, total: 7, missing: [] });
+  }
+  html += '<div class="content-tabs">';
   [['studio', 'Studio del dettaglio'], ['approfondimento', 'Approfondimento']].forEach(function (t) {
     html += '<div class="ctab' + (s.activeTab === t[0] ? ' active' : '') + '" data-ctab="' + t[0] + '">' + t[1] + '</div>';
   });
@@ -560,6 +589,10 @@ function rebindDetailEditor() {
       genTab(studio.activeDetailId, tab, b);
     };
   });
+  var keep = document.getElementById('btnKeepND');
+  if (keep) keep.onclick = function () { keepNewDetail(); };
+  var drop = document.getElementById('btnDropND');
+  if (drop) drop.onclick = function () { dropNewDetail(); };
 }
 function collectTabFields(detailId, tab) {
   var area = document.getElementById('detailsArea');
@@ -955,6 +988,11 @@ function paintStudioPanel() {
   var s = studio;
   if (!s || !s.imageUrl) return;
   var staleEdit = document.getElementById('wsEdit');
+  if (s.newDetail) { paintNewDetailView(); return; }
+  var staleNew = document.getElementById('wsNew');
+  if (staleNew) staleNew.remove();
+  var stalePanel = document.getElementById('ndPanel');
+  if (stalePanel) stalePanel.remove();
   if (s.editBoxes) { if (!staleEdit) paintBoxEditor(); else bindBoxEditor(document.querySelector('.spot-wrap')); return; }
   if (staleEdit) staleEdit.remove();
   drawSpotOnCanvas('wsSpot', s.imageUrl, s.details || [], s.spotId);
@@ -971,6 +1009,7 @@ function paintStudioPanel() {
 function toggleBoxEditor() {
   var s = studio;
   if (!s || !s.artworkId) return;
+  if (s.newDetail) return toast('Completa o annulla prima la creazione del nuovo dettaglio.');
   s.editBoxes = !s.editBoxes;
   var btn = document.getElementById('btnEditBoxes');
   if (btn) {
@@ -1101,6 +1140,375 @@ function saveBoxRegion(detailId, region) {
     toast('Riquadro aggiornato e salvato', true);
   }).catch(function (e) { toast('Salvataggio riquadro fallito: ' + e.message); });
 }
+
+/* ================= aggiunta manuale di un hotspot/dettaglio ================= */
+var ND_CATEGORIES = ['Figura', 'Composizione', 'Simbolo', 'Luce', 'Colore', 'Oggetto', 'Architettura'];
+
+function openNewDetail() {
+  var s = studio;
+  if (!s || !s.artworkId) return;
+  if (s.genBusy || pipeAlive()) return toast('Attendi: una generazione è già in corso.');
+  if (s.newDetail) return toast('C’è già un nuovo dettaglio in creazione: completalo o annullalo.');
+  s.editBoxes = false;
+  var eb = document.getElementById('btnEditBoxes');
+  if (eb) { eb.textContent = '✏️ Adatta riquadri'; eb.classList.remove('coral'); }
+  s.newDetail = { phase: 'draw', region: null, title: '', category: '', reading: null };
+  var hint = document.getElementById('editBoxHint');
+  if (hint) hint.textContent = '✏️ Trascina sull’immagine per disegnare il riquadro del nuovo dettaglio.';
+  paintNewDetailView();
+  var wrap = document.querySelector('.spot-wrap');
+  if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function cancelNewDetail() {
+  var s = studio;
+  if (!s) return;
+  s.newDetail = null;
+  removeNDArtifacts();
+  var hint = document.getElementById('editBoxHint');
+  if (hint) hint.textContent = 'Ridimensiona i riquadri dei dettagli per adattarli alle figure complete.';
+  paintStudioPanel();
+}
+function removeNDArtifacts() {
+  var ov = document.getElementById('wsNew'); if (ov) ov.remove();
+  var pn = document.getElementById('ndPanel'); if (pn) pn.remove();
+}
+function ndRectValid(r) { return r && r.width >= 0.04 && r.height >= 0.04; }
+function paintNewDetailView() {
+  var s = studio;
+  if (!s || !document.getElementById('wsSpot')) return;
+  var nd = s.newDetail;
+  if (!nd) return;
+  drawSpotOnCanvas('wsSpot', s.imageUrl, [], null);
+  var wrap = document.querySelector('.spot-wrap');
+  var old = document.getElementById('wsEdit'); if (old) old.remove();
+  removeNDArtifacts();
+  if (!wrap) { paintNewPanel(); return; }
+  var ov = document.createElement('div');
+  ov.id = 'wsNew';
+  ov.className = 'spot-edit nd-overlay';
+  if (nd.phase === 'draw' || !nd.region) {
+    var tip = document.createElement('div');
+    tip.className = 'nd-tip';
+    tip.textContent = '✏️ Trascina il rettangolo del nuovo dettaglio';
+    ov.appendChild(tip);
+    var cap = document.createElement('div');
+    cap.className = 'nd-capture';
+    ov.appendChild(cap);
+    wrap.appendChild(ov);
+    bindNewDraw(cap);
+  } else {
+    var bx = document.createElement('div');
+    bx.className = 'bx on nd-new';
+    var r = nd.region;
+    bx.style.left = (r.x * 100) + '%';
+    bx.style.top = (r.y * 100) + '%';
+    bx.style.width = (r.width * 100) + '%';
+    bx.style.height = (r.height * 100) + '%';
+    var lab = document.createElement('span');
+    lab.className = 'bx-lab';
+    lab.textContent = 'NUOVO · ' + (nd.title || 'dettaglio');
+    bx.appendChild(lab);
+    ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].forEach(function (h) {
+      var el = document.createElement('i');
+      el.className = 'h ' + h;
+      el.dataset.h = h;
+      bx.appendChild(el);
+    });
+    ov.appendChild(bx);
+    wrap.appendChild(ov);
+    bindNewBoxDrag(wrap, bx);
+  }
+  bindRail('wsRail', s.details || [], null, function () {
+    toast('Prima completa o annulla la creazione del nuovo dettaglio.');
+  });
+  paintNewPanel();
+}
+function bindNewDraw(cap) {
+  var wrap = document.querySelector('.spot-wrap');
+  if (!wrap) return;
+  var start = null, rectEl = null;
+  function nx(cx) { var r = wrap.getBoundingClientRect(); return (cx - r.left) / r.width; }
+  function ny(cy) { var r = wrap.getBoundingClientRect(); return (cy - r.top) / r.height; }
+  function down(e) {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    start = { x: Math.max(0, Math.min(1, nx(e.clientX))), y: Math.max(0, Math.min(1, ny(e.clientY))) };
+    rectEl = document.createElement('div');
+    rectEl.className = 'bx nd-draw';
+    rectEl.style.pointerEvents = 'none';
+    // dentro l'overlay inset:0 (altezza definita): le % di altezza risolvono correttamente
+    (cap.parentNode || wrap).appendChild(rectEl);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+  function move(e) {
+    if (!start || !rectEl) return;
+    var x2 = Math.max(0, Math.min(1, nx(e.clientX)));
+    var y2 = Math.max(0, Math.min(1, ny(e.clientY)));
+    var x = Math.min(start.x, x2), y = Math.min(start.y, y2);
+    var w = Math.abs(x2 - start.x), h = Math.abs(y2 - start.y);
+    rectEl.style.left = (x * 100) + '%';
+    rectEl.style.top = (y * 100) + '%';
+    rectEl.style.width = (w * 100) + '%';
+    rectEl.style.height = (h * 100) + '%';
+  }
+  function up() {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    if (!start || !rectEl) return;
+    var wr = wrap.getBoundingClientRect();
+    var rr = rectEl.getBoundingClientRect();
+    rectEl.remove(); rectEl = null; start = null;
+    var region = { x: (rr.left - wr.left) / wr.width, y: (rr.top - wr.top) / wr.height, width: rr.width / wr.width, height: rr.height / wr.height };
+    if (!ndRectValid(region)) return toast('Riquadro troppo piccolo: allarga la selezione.');
+    var r4 = function (v) { return Math.round(v * 10000) / 10000; };
+    studio.newDetail.region = { x: r4(region.x), y: r4(region.y), width: r4(region.width), height: r4(region.height) };
+    studio.newDetail.phase = 'panel';
+    paintNewDetailView();
+  }
+  cap.addEventListener('pointerdown', down);
+}
+function bindNewBoxDrag(wrap, box) {
+  var nd = studio.newDetail;
+  if (!wrap || !box || !nd) return;
+  box.onpointerdown = function (e) {
+    e.preventDefault();
+    var mode = 'move';
+    var h = e.target.closest('.h');
+    if (h) mode = h.dataset.h;
+    var start = { x: nd.region.x, y: nd.region.y, w: nd.region.width, h: nd.region.height };
+    var rect0 = wrap.getBoundingClientRect();
+    var px = (e.clientX - rect0.left) / rect0.width;
+    var py = (e.clientY - rect0.top) / rect0.height;
+    function rect() { return wrap.getBoundingClientRect(); }
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+    function r4(v) { return Math.round(v * 10000) / 10000; }
+    function apply(cx, cy) {
+      var rc = rect();
+      var dx = (cx - rc.left) / rc.width - px;
+      var dy = (cy - rc.top) / rc.height - py;
+      var x = start.x, y = start.y, w = start.w, h = start.h;
+      var MIN = 0.03;
+      if (mode === 'move') { x = clamp(start.x + dx, 0, 1 - w); y = clamp(start.y + dy, 0, 1 - h); }
+      else {
+        if (mode.indexOf('w') >= 0) { var nxl = clamp(start.x + dx, 0, start.x + start.w - MIN); w = start.x + start.w - nxl; x = nxl; }
+        if (mode.indexOf('e') >= 0) { w = clamp(start.w + dx, MIN, 1 - start.x); }
+        if (mode.indexOf('n') >= 0) { var nyt = clamp(start.y + dy, 0, start.y + start.h - MIN); h = start.y + start.h - nyt; y = nyt; }
+        if (mode.indexOf('s') >= 0) { h = clamp(start.h + dy, MIN, 1 - start.y); }
+      }
+      nd.region.x = r4(x); nd.region.y = r4(y); nd.region.width = r4(w); nd.region.height = r4(h);
+      box.style.left = (nd.region.x * 100) + '%';
+      box.style.top = (nd.region.y * 100) + '%';
+      box.style.width = (nd.region.width * 100) + '%';
+      box.style.height = (nd.region.height * 100) + '%';
+    }
+    function up() {
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', up);
+    }
+    function mv(ev) { ev.preventDefault(); apply(ev.clientX, ev.clientY); }
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', up);
+    apply(e.clientX, e.clientY);
+  };
+}
+function paintNewPanel() {
+  var s = studio;
+  var host = document.querySelector('.img-panel');
+  if (!s || !host) return;
+  var old = document.getElementById('ndPanel');
+  if (old) old.remove();
+  var nd = s.newDetail;
+  if (!nd) return;
+  var panel = document.createElement('div');
+  panel.id = 'ndPanel';
+  panel.className = 'nd-panel';
+  var html = '';
+  var ph = nd.phase;
+  if (ph === 'draw') {
+    html = '<div class="nd-row"><span class="nd-p">✏️ Trascina sull’immagine per disegnare il riquadro del nuovo dettaglio, poi dagli un nome.</span>' +
+      '<button class="btn small ghost" id="btnNDCancel">✕ Annulla</button></div>';
+  } else if (ph === 'reading' || ph === 'gen') {
+    html = '<div class="nd-row"><span class="spinner"></span><span class="nd-p">' +
+      (ph === 'reading' ? 'Il modello sta leggendo il dettaglio e propone la categoria…' : 'Genero i contenuti di entrambe le tab (studio del dettaglio e approfondimento)…') +
+      '</span></div>';
+  } else if (ph === 'panel' || ph === 'category') {
+    var catHtml = '';
+    ND_CATEGORIES.forEach(function (c) { catHtml += '<option value="' + c + '"' + (nd.category === c ? ' selected' : '') + '>' + c + '</option>'; });
+    var sog = '';
+    if (ph === 'category' && nd.reading) {
+      sog = nd.reading.subjectFound
+        ? '<div class="nd-chip ok">✓ Il modello ha riconosciuto un soggetto nel riquadro</div>'
+        : '<div class="nd-chip warn">⚠ Il modello non ha riconosciuto un soggetto chiaro: i testi generati potrebbero essere parziali o vuoti.</div>';
+    }
+    html = '<div class="nd-field-row">' +
+      '<div class="field" style="flex:1.4;min-width:220px"><label>Nome del nuovo dettaglio (didascalia)</label><input id="ndTitle" value="' + esc(nd.title) + '" placeholder="es. Il gesto di saluto dell’angelo" maxlength="90" /></div>' +
+      (ph === 'category' ? '<div class="field" style="flex:1;min-width:170px"><label>Categoria proposta dal modello</label><select id="ndCat">' + catHtml + '</select></div>' : '') +
+      '</div>' + sog +
+      '<div class="nd-row" style="margin-top:10px">' +
+      (ph === 'panel'
+        ? '<span class="nd-p" style="flex:1">Rifinisci il riquadro con le maniglie, poi fai leggere il dettaglio al modello.</span><button class="btn small primary" id="btnNDRead">🔍 Leggi e verifica</button>'
+        : '<span class="nd-p" style="flex:1">Verifica la categoria, poi genera i contenuti di entrambe le tab.</span><button class="btn small coral" id="btnNDGen">⚡ Genera i contenuti</button>') +
+      '<button class="btn small ghost" id="btnNDCancel">✕ Annulla</button></div>';
+  }
+  panel.innerHTML = html;
+  host.insertAdjacentElement('afterend', panel);
+  bindNewPanel();
+}
+function bindNewPanel() {
+  var s = studio;
+  var nd = s && s.newDetail;
+  if (!nd) return;
+  var t = document.getElementById('ndTitle');
+  if (t) t.oninput = function () { nd.title = t.value; var lab = document.querySelector('#wsNew .bx-lab'); if (lab) lab.textContent = 'NUOVO · ' + (t.value || 'dettaglio'); };
+  var c = document.getElementById('ndCat');
+  if (c) c.onchange = function () { nd.category = c.value; };
+  var read = document.getElementById('btnNDRead');
+  if (read) read.onclick = function () { startNewRead(); };
+  var gen = document.getElementById('btnNDGen');
+  if (gen) gen.onclick = function () { startNewGen(); };
+  var can = document.getElementById('btnNDCancel');
+  if (can) can.onclick = function () { cancelNewDetail(); };
+}
+function ndFail(phase, message) {
+  var s = studio;
+  if (!s || !s.newDetail) return;
+  s.newDetail.phase = phase;
+  s.newDetail.err = message;
+  paintNewDetailView();
+  toast(message);
+}
+function startNewRead() {
+  var s = studio, nd = s.newDetail;
+  if (!nd || !nd.region) return;
+  nd.title = String(nd.title || '').trim();
+  if (!nd.title) return toast('Dai un nome al nuovo dettaglio prima di continuare.');
+  nd.phase = 'reading';
+  paintNewDetailView();
+  loadImage(s.imageUrl).then(function (img) {
+    if (!img) throw new Error('Immagine non disponibile');
+    return cropDataUrl(img, nd.region, 900);
+  }).then(function (crop) {
+    if (!crop) throw new Error('Ritaglio non disponibile');
+    return post('/api/artworks/' + s.artworkId + '/details/read', { selectionImage: crop });
+  }).then(function (body) {
+    nd.reading = body.reading || {};
+    nd.category = nd.reading.category || (nd.reading.subjectFound ? 'Figura' : '');
+    nd.phase = 'category';
+    paintNewDetailView();
+    toast(nd.reading.subjectFound ? 'Il modello ha letto il dettaglio: verifica la categoria proposta.' : 'Lettura completata: nessun soggetto chiaro riconosciuto.', !!nd.reading.subjectFound);
+  }).catch(function (e) { ndFail('panel', 'Lettura fallita: ' + e.message); });
+}
+function startNewGen() {
+  var s = studio, nd = s.newDetail;
+  if (!nd || !nd.reading) return toast('Prima fai leggere il dettaglio al modello.');
+  nd.title = String(nd.title || '').trim();
+  if (!nd.title) return toast('Dai un nome al nuovo dettaglio.');
+  var cat = document.getElementById('ndCat');
+  if (cat) nd.category = cat.value;
+  nd.phase = 'gen';
+  paintNewDetailView();
+  loadImage(s.imageUrl).then(function (img) {
+    if (!img) throw new Error('Immagine non disponibile');
+    return cropDataUrl(img, nd.region, 900);
+  }).then(function (crop) {
+    if (!crop) throw new Error('Ritaglio non disponibile');
+    return post('/api/artworks/' + s.artworkId + '/details', {
+      title: nd.title, category: nd.category || '', region: nd.region, selectionImage: crop, reading: nd.reading
+    });
+  }).then(function (body) {
+    var newId = body.detail && body.detail.id;
+    // banner costruito DIRETTAMENTE dalla risposta del server: nessuna race con il reload
+    var bodyDetail = {
+      id: newId,
+      title: (body.detail || {}).title || '',
+      category: (body.detail || {}).category || '',
+      region: (body.detail || {}).region || null,
+      tabs: {
+        studio: (body.content && body.content.studio) || null,
+        approfondimento: (body.content && body.content.approfondimento) || null
+      }
+    };
+    var info = completenessInfo(bodyDetail);
+    if (nd.reading) info.reading = { subjectFound: !!nd.reading.subjectFound, category: nd.category || '' };
+    s.pendingNew = { id: newId, info: info };
+    s.activeDetailId = newId;
+    s.activeTab = 'studio';
+    s.newDetail = null;
+    removeNDArtifacts();
+    var hint = document.getElementById('editBoxHint');
+    if (hint) hint.textContent = 'Ridimensiona i riquadri dei dettagli per adattarli alle figure complete.';
+    paintStudioPanel();
+    return api('/api/artworks/' + s.artworkId).then(function (full) {
+      s.details = full.details || [];
+      renderDetailsPanel();
+      var da = document.getElementById('detailsArea');
+      if (da) da.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      toast(info ? ndLevelMessage(info) : 'Contenuti generati per il nuovo dettaglio', info.level !== 'insufficient');
+    });
+  }).catch(function (e) { ndFail('category', 'Generazione fallita: ' + e.message); });
+}
+function completenessInfo(detail) {
+  var st = (detail.tabs && detail.tabs.studio && detail.tabs.studio.content) || {};
+  var ap = (detail.tabs && detail.tabs.approfondimento && detail.tabs.approfondimento.content) || {};
+  var core = [
+    ['observation', 'studio'], ['meaning', 'studio'], ['relation', 'studio'],
+    ['curiosity', 'approfondimento'], ['comparisons', 'approfondimento'],
+    ['openQuestions', 'approfondimento'], ['technique', 'approfondimento']
+  ];
+  var filled = core.filter(function (c) { var v = (c[1] === 'studio' ? st : ap)[c[0]]; return v && String(v).trim(); });
+  var missing = core.filter(function (c) { return filled.indexOf(c) < 0; });
+  var n = filled.length, total = core.length;
+  return {
+    level: n >= 6 ? 'complete' : n >= 3 ? 'partial' : 'insufficient',
+    filled: n, total: total,
+    missing: missing.map(function (c) { return { key: c[0], tab: c[1] }; })
+  };
+}
+function ndLevelMessage(info) {
+  if (info.level === 'complete') return 'Dati completi: il modello ha compilato tutte le sezioni delle due tab.';
+  if (info.level === 'partial') return 'Dati parziali: ' + (info.total - info.filled) + ' sezioni vuote — rivedile nell’editor qui sotto.';
+  return 'Dati insufficienti: la zona selezionata non ha prodotto contenuti pieni.';
+}
+function ndBannerHtml(info) {
+  var level = info.level;
+  var ico = level === 'complete' ? '✓' : level === 'partial' ? '◐' : '⚠';
+  var title = 'Dettaglio aggiunto a mano — dati ' + (level === 'complete' ? 'completi' : level === 'partial' ? 'parziali' : 'insufficienti');
+  var txt = '';
+  if (level === 'complete') txt = 'Il modello ha generato i testi di tutte le sezioni delle due tab (studio del dettaglio e approfondimento). Rileggi i contenuti qui sotto e, se va bene, premi “Conserva e memorizza”.';
+  else if (level === 'partial') txt = 'Il modello ha generato ' + info.filled + ' sezioni su ' + info.total + ': restano vuote ' + info.missing.map(function (m) { return fieldLabel(m.key); }).join(', ') + '. Puoi compilarle a mano nell’editor, rigenerare la singola tab, oppure rimuovere il dettaglio.';
+  else {
+    if (info.reading && info.reading.subjectFound === false) txt = 'Il modello non ha riconosciuto un soggetto chiaro nel riquadro disegnato: solo ' + info.filled + ' sezioni su ' + info.total + ' hanno contenuto. Se la zona è vuota conviene rimuovere il dettaglio; altrimenti allarga il riquadro e riprova.';
+    else txt = 'La zona selezionata ha prodotto dati insufficienti: solo ' + info.filled + ' sezioni su ' + info.total + ' compilate. Rivedi i testi nell’editor, rigenera le tab, oppure rimuovi il dettaglio.';
+  }
+  return '<div class="nd-banner ' + level + '"><span class="nd-ico">' + ico + '</span><div><strong>' + title + '</strong><p>' + txt + '</p>' +
+    '<div class="nd-actions"><button class="btn small green" id="btnKeepND">💾 Conserva e memorizza</button>' +
+    '<button class="btn small ghost" id="btnDropND">🗑 Rimuovi dettaglio</button></div></div></div>';
+}
+function keepNewDetail() {
+  var s = studio;
+  if (!s || !s.pendingNew) return;
+  post('/api/details/' + s.pendingNew.id + '/approve').then(function () {
+    s.pendingNew = null;
+    renderDetailsPanel();
+    toast('Dettaglio conservato e memorizzato nel database', true);
+  }).catch(function (e) { toast('Salvataggio fallito: ' + e.message); });
+}
+function dropNewDetail() {
+  var s = studio;
+  if (!s || !s.pendingNew) return;
+  del('/api/details/' + s.pendingNew.id).then(function () {
+    return api('/api/artworks/' + s.artworkId);
+  }).then(function (full) {
+    s.details = full.details || [];
+    s.pendingNew = null;
+    var keep = s.details.find(function (x) { return String(x.id) === String(s.activeDetailId); });
+    if (!keep) s.activeDetailId = s.details.length ? s.details[0].id : null;
+    renderDetailsPanel();
+    paintStudioPanel();
+    toast('Dettaglio rimosso', true);
+  }).catch(function (e) { toast('Rimozione fallita: ' + e.message); });
+}
 function paintViewerSpot() {
   if (!document.getElementById('vwSpot')) return;
   var full = state.viewerArtwork;
@@ -1161,7 +1569,7 @@ function pipeSet(phase, activity) {
   pipePaint();
 }
 function pipeButtonsDisabled(dis) {
-  ['btnMeta', 'btnDetails', 'btnGenAll', 'btnOverview', 'btnSimilar', 'btnSave'].forEach(function (id) {
+  ['btnMeta', 'btnDetails', 'btnGenAll', 'btnOverview', 'btnSimilar', 'btnSave', 'btnAddDetail'].forEach(function (id) {
     var b = document.getElementById(id);
     if (b) b.disabled = dis;
   });
