@@ -118,6 +118,93 @@ export function initSchema() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_similar_artwork ON similar_works(artwork_id);
+
+    -- --- Schede "Soggetto nella storia dell'arte" ---
+    CREATE TABLE IF NOT EXISTS subjects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      short_desc TEXT NOT NULL DEFAULT '',
+      intro TEXT NOT NULL DEFAULT '',
+      origins TEXT NOT NULL DEFAULT '',
+      symbols TEXT NOT NULL DEFAULT '',
+      interpretations TEXT NOT NULL DEFAULT '',
+      curiosities TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS subject_chapters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      era TEXT NOT NULL,
+      text TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS subject_works (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL DEFAULT '',
+      artist TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL DEFAULT '',
+      museum TEXT NOT NULL DEFAULT '',
+      caption TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      image_page TEXT NOT NULL DEFAULT '',
+      image_data BLOB,
+      image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      image_status TEXT NOT NULL DEFAULT 'missing',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_subject_chapters ON subject_chapters(subject_id);
+    CREATE INDEX IF NOT EXISTS idx_subject_works ON subject_works(subject_id);
+
+    -- --- Schede "Faccia a faccia" ---
+    CREATE TABLE IF NOT EXISTS comparisons (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      comparison_type TEXT NOT NULL DEFAULT 'same-subject' CHECK (comparison_type IN ('same-subject','same-artist')),
+      intro TEXT NOT NULL DEFAULT '',
+      technique TEXT NOT NULL DEFAULT '',
+      context TEXT NOT NULL DEFAULT '',
+      critique TEXT NOT NULL DEFAULT '',
+      curiosities TEXT NOT NULL DEFAULT '',
+      thumb_data BLOB,
+      thumb_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS comparison_sides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comparison_id TEXT NOT NULL REFERENCES comparisons(id) ON DELETE CASCADE,
+      side TEXT NOT NULL CHECK (side IN ('a','b')),
+      source TEXT NOT NULL CHECK (source IN ('library','external')),
+      artwork_id TEXT REFERENCES artworks(id) ON DELETE SET NULL,
+      title TEXT NOT NULL DEFAULT '',
+      artist TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL DEFAULT '',
+      museum TEXT NOT NULL DEFAULT '',
+      image_data BLOB,
+      image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      image_url TEXT NOT NULL DEFAULT '',
+      image_status TEXT NOT NULL DEFAULT 'missing',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(comparison_id, side)
+    );
+    CREATE TABLE IF NOT EXISTS comparison_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comparison_id TEXT NOT NULL REFERENCES comparisons(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('similar','different')),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL DEFAULT '',
+      text TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_comparison_sides ON comparison_sides(comparison_id);
+    CREATE INDEX IF NOT EXISTS idx_comparison_points ON comparison_points(comparison_id);
   `);
 
   // migrazione: le immagini vivono nel DB come BLOB (binary, non base64: più compatto e veloce).
@@ -428,6 +515,183 @@ export function countStatus() {
   };
 }
 
+// --- Schede "Soggetto nella storia dell'arte" ---
+function rowToSubject(row) {
+  if (!row) return null;
+  return {
+    id: row.id, name: row.name, shortDesc: row.short_desc,
+    intro: row.intro, origins: row.origins, symbols: row.symbols,
+    interpretations: row.interpretations, curiosities: row.curiosities,
+    status: row.status, createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+export function createSubject({ id, name }) {
+  getDb().prepare('INSERT INTO subjects (id, name, status, created_at, updated_at) VALUES (?, ?, \'draft\', ?, ?)')
+    .run(id, name || '', now(), now());
+  return getSubject(id);
+}
+export function getSubject(id, conn) {
+  return rowToSubject((conn || getDb()).prepare('SELECT * FROM subjects WHERE id = ?').get(id));
+}
+export function listSubjects(conn) {
+  return (conn || getDb()).prepare('SELECT * FROM subjects ORDER BY updated_at DESC').all().map(rowToSubject);
+}
+export function updateSubject(id, patch) {
+  const current = getSubject(id);
+  if (!current) return null;
+  const fields = ['name', 'short_desc', 'intro', 'origins', 'symbols', 'interpretations', 'curiosities', 'status'];
+  const sets = []; const values = [];
+  for (const f of fields) {
+    if (patch[f] !== undefined) { sets.push(f + '=?'); values.push(patch[f]); }
+  }
+  if (sets.length) { values.push(now(), id); getDb().prepare(`UPDATE subjects SET ${sets.join(', ')}, updated_at=? WHERE id=?`).run(...values); }
+  return getSubject(id);
+}
+export function deleteSubject(id) {
+  getDb().prepare('DELETE FROM subjects WHERE id = ?').run(id);
+}
+export function approveSubject(id) {
+  const subject = getSubject(id);
+  if (!subject) return null;
+  updateSubject(id, { status: 'ready' });
+  return getSubject(id);
+}
+export function replaceSubjectChapters(subjectId, items) {
+  getDb().prepare('DELETE FROM subject_chapters WHERE subject_id = ?').run(subjectId);
+  const insert = getDb().prepare('INSERT INTO subject_chapters (subject_id, sort_order, era, text) VALUES (?, ?, ?, ?)');
+  (Array.isArray(items) ? items : []).forEach((c, index) => insert.run(subjectId, index, c.era || '', c.text || ''));
+  return listSubjectChapters(subjectId);
+}
+export function listSubjectChapters(subjectId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM subject_chapters WHERE subject_id = ? ORDER BY sort_order, id').all(subjectId)
+    .map(r => ({ id: r.id, era: r.era, text: r.text, sortOrder: r.sort_order }));
+}
+function rowToSubjectWork(row) {
+  if (!row) return null;
+  return {
+    id: row.id, sortOrder: row.sort_order, title: row.title, artist: row.artist, date: row.date,
+    museum: row.museum, caption: row.caption, imageUrl: row.image_url, imagePage: row.image_page,
+    hasImage: Boolean(row.image_data), imageStatus: row.image_status, status: row.status
+  };
+}
+export function replaceSubjectWorks(subjectId, works) {
+  getDb().prepare('DELETE FROM subject_works WHERE subject_id = ?').run(subjectId);
+  const insert = getDb().prepare(`INSERT INTO subject_works (subject_id, sort_order, title, artist, date, museum, caption, image_url, image_page, image_data, image_mime, image_status, status, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  (Array.isArray(works) ? works : []).forEach((w, index) => {
+    insert.run(subjectId, index, w.title || '', w.artist || '', w.date || '', w.museum || '', w.caption || '',
+      w.imageUrl || '', w.imagePage || '', w.imageData || null, w.imageMime || 'image/jpeg',
+      w.imageStatus || 'missing', w.status || 'draft', now());
+  });
+  return listSubjectWorks(subjectId);
+}
+export function listSubjectWorks(subjectId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM subject_works WHERE subject_id = ? ORDER BY sort_order, id').all(subjectId).map(rowToSubjectWork);
+}
+export function getSubjectWorkImage(subjectId, workId, conn) {
+  const row = (conn || getDb()).prepare('SELECT image_data, image_mime FROM subject_works WHERE id = ? AND subject_id = ?').get(workId, subjectId);
+  return (row && row.image_data) ? { data: row.image_data, mime: row.image_mime } : null;
+}
+export function getFullSubject(id, conn) {
+  const c = conn || getDb();
+  const subject = getSubject(id, c);
+  if (!subject) return null;
+  return { ...subject, chapters: listSubjectChapters(id, c), works: listSubjectWorks(id, c) };
+}
+
+// --- Schede "Faccia a faccia" ---
+function rowToComparison(row) {
+  if (!row) return null;
+  return {
+    id: row.id, title: row.title, comparisonType: row.comparison_type,
+    intro: row.intro, technique: row.technique, context: row.context,
+    critique: row.critique, curiosities: row.curiosities,
+    hasThumb: Boolean(row.thumb_data), status: row.status,
+    createdAt: row.created_at, updatedAt: row.updated_at
+  };
+}
+export function createComparison({ id, title = '', comparisonType = 'same-subject' }) {
+  getDb().prepare('INSERT INTO comparisons (id, title, comparison_type, status, created_at, updated_at) VALUES (?, ?, ?, \'draft\', ?, ?)')
+    .run(id, title, comparisonType, now(), now());
+  return getComparison(id);
+}
+export function getComparison(id, conn) {
+  return rowToComparison((conn || getDb()).prepare('SELECT * FROM comparisons WHERE id = ?').get(id));
+}
+export function listComparisons(conn) {
+  return (conn || getDb()).prepare('SELECT * FROM comparisons ORDER BY updated_at DESC').all().map(rowToComparison);
+}
+export function updateComparison(id, patch) {
+  const current = getComparison(id);
+  if (!current) return null;
+  const fields = ['title', 'comparison_type', 'intro', 'technique', 'context', 'critique', 'curiosities', 'status'];
+  const sets = []; const values = [];
+  for (const f of fields) {
+    if (patch[f] !== undefined) { sets.push(f + '=?'); values.push(patch[f]); }
+  }
+  if (sets.length) { values.push(now(), id); getDb().prepare(`UPDATE comparisons SET ${sets.join(', ')}, updated_at=? WHERE id=?`).run(...values); }
+  return getComparison(id);
+}
+export function deleteComparison(id) {
+  getDb().prepare('DELETE FROM comparisons WHERE id = ?').run(id);
+}
+export function setComparisonThumb(id, data, mime = 'image/jpeg') {
+  getDb().prepare('UPDATE comparisons SET thumb_data = ?, thumb_mime = ?, updated_at = ? WHERE id = ?').run(data, mime, now(), id);
+  return getComparison(id);
+}
+export function approveComparison(id) {
+  const comparison = getComparison(id);
+  if (!comparison) return null;
+  updateComparison(id, { status: 'ready' });
+  return getComparison(id);
+}
+function rowToSide(row) {
+  if (!row) return null;
+  return {
+    id: row.id, side: row.side, source: row.source, artworkId: row.artwork_id,
+    title: row.title, artist: row.artist, date: row.date, museum: row.museum,
+    hasImage: Boolean(row.image_data), imageUrl: row.image_url, imageStatus: row.image_status
+  };
+}
+export function setComparisonSide(comparisonId, side, data) {
+  getDb().prepare(`INSERT INTO comparison_sides (comparison_id, side, source, artwork_id, title, artist, date, museum, image_data, image_mime, image_url, image_status, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(comparison_id, side) DO UPDATE SET
+                source=excluded.source, artwork_id=excluded.artwork_id, title=excluded.title, artist=excluded.artist,
+                date=excluded.date, museum=excluded.museum, image_data=excluded.image_data, image_mime=excluded.image_mime,
+                image_url=excluded.image_url, image_status=excluded.image_status, updated_at=excluded.updated_at`)
+    .run(comparisonId, side, data.source || 'external', data.artworkId || null,
+      data.title || '', data.artist || '', data.date || '', data.museum || '',
+      data.imageData || null, data.imageMime || 'image/jpeg', data.imageUrl || '', data.imageStatus || 'missing', now(), now());
+  return getComparisonSide(comparisonId, side);
+}
+export function getComparisonSide(comparisonId, side, conn) {
+  return rowToSide((conn || getDb()).prepare('SELECT * FROM comparison_sides WHERE comparison_id = ? AND side = ?').get(comparisonId, side));
+}
+export function listComparisonSides(comparisonId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM comparison_sides WHERE comparison_id = ? ORDER BY side').all(comparisonId).map(rowToSide);
+}
+export function getComparisonSideImage(comparisonId, side, conn) {
+  const row = (conn || getDb()).prepare('SELECT image_data, image_mime FROM comparison_sides WHERE comparison_id = ? AND side = ?').get(comparisonId, side);
+  return (row && row.image_data) ? { data: row.image_data, mime: row.image_mime } : null;
+}
+export function replaceComparisonPoints(comparisonId, points) {
+  getDb().prepare('DELETE FROM comparison_points WHERE comparison_id = ?').run(comparisonId);
+  const insert = getDb().prepare('INSERT INTO comparison_points (comparison_id, kind, sort_order, title, text) VALUES (?, ?, ?, ?, ?)');
+  (Array.isArray(points) ? points : []).forEach((p, index) => insert.run(comparisonId, p.kind === 'different' ? 'different' : 'similar', index, p.title || '', p.text || ''));
+  return listComparisonPoints(comparisonId);
+}
+export function listComparisonPoints(comparisonId, conn) {
+  return (conn || getDb()).prepare('SELECT * FROM comparison_points WHERE comparison_id = ? ORDER BY kind, sort_order, id').all(comparisonId)
+    .map(r => ({ id: r.id, kind: r.kind, title: r.title, text: r.text, sortOrder: r.sort_order }));
+}
+export function getFullComparison(id, conn) {
+  const c = conn || getDb();
+  const comparison = getComparison(id, c);
+  if (!comparison) return null;
+  return { ...comparison, sides: listComparisonSides(id, c), points: listComparisonPoints(id, c) };
+}
+
 // --- approvazione e publish ---
 export function approveArtwork(id) {
   const artwork = getArtwork(id);
@@ -534,4 +798,39 @@ export function listSimilarWorksRO(artworkId) {
 export function getSimilarImageRO(artworkId, similarId) {
   const conn = openReadonly();
   try { return getSimilarImage(artworkId, similarId); } finally { conn.close(); }
+}
+
+// --- Schede Soggetto (RO per artest) ---
+export function listReadySubjectsRO() {
+  const conn = openReadonly();
+  try { return conn.prepare("SELECT * FROM subjects WHERE status = 'ready' ORDER BY updated_at DESC").all().map(rowToSubject); } finally { conn.close(); }
+}
+export function getSubjectRO(id) {
+  const conn = openReadonly();
+  try { return getFullSubject(id, conn); } finally { conn.close(); }
+}
+export function getSubjectWorkImageRO(subjectId, workId) {
+  const conn = openReadonly();
+  try { return getSubjectWorkImage(subjectId, workId, conn); } finally { conn.close(); }
+}
+
+// --- Schede Faccia a faccia (RO per artest) ---
+export function listReadyComparisonsRO() {
+  const conn = openReadonly();
+  try { return conn.prepare("SELECT * FROM comparisons WHERE status = 'ready' ORDER BY updated_at DESC").all().map(rowToComparison); } finally { conn.close(); }
+}
+export function getComparisonRO(id) {
+  const conn = openReadonly();
+  try { return getFullComparison(id, conn); } finally { conn.close(); }
+}
+export function getComparisonSideImageRO(comparisonId, side) {
+  const conn = openReadonly();
+  try { return getComparisonSideImage(comparisonId, side, conn); } finally { conn.close(); }
+}
+export function getComparisonThumbRO(comparisonId) {
+  const conn = openReadonly();
+  try {
+    const row = conn.prepare('SELECT thumb_data, thumb_mime FROM comparisons WHERE id = ?').get(comparisonId);
+    return (row && row.thumb_data) ? { data: row.thumb_data, mime: row.thumb_mime || 'image/jpeg' } : null;
+  } finally { conn.close(); }
 }

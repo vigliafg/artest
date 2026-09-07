@@ -14,7 +14,12 @@ import {
   saveOverview, getOverview,
   addSource, listSources, getFullArtwork, approveArtwork, publishArtwork,
   getArtworkImageData, setAnnotatedImage,
-  replaceSimilarWorks, listSimilarWorks, getSimilarImage, updateSimilarWork, clearSimilarImage
+  replaceSimilarWorks, listSimilarWorks, getSimilarImage, updateSimilarWork, clearSimilarImage,
+  createSubject, getSubject, listSubjects, updateSubject, deleteSubject, approveSubject,
+  replaceSubjectChapters, listSubjectChapters, getFullSubject, replaceSubjectWorks, listSubjectWorks, getSubjectWorkImage,
+  createComparison, getComparison, listComparisons, updateComparison, deleteComparison, approveComparison, setComparisonThumb,
+  setComparisonSide, listComparisonSides, getComparisonSide, getComparisonSideImage,
+  replaceComparisonPoints, listComparisonPoints, getFullComparison
 } from './db.mjs';
 import { callModel, VISION_MODEL, TEXT_MODEL, getOpenRouterApiKey,
   buildVisionPrompt, buildOverviewPrompt, buildTextPrompt, buildSimilarPrompt,
@@ -535,6 +540,286 @@ function handleApi(req, res, urlPath) {
     }).catch(e => err(res, 400, e.message));
   }
 
+  // ================= Schede SOGGETTO nella storia dell'arte =================
+  // GET /api/subjects
+  if (method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'subjects') {
+    return json(res, 200, { subjects: listSubjects().map(subjectPublic) });
+  }
+  // POST /api/subjects { name }
+  if (method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'subjects') {
+    return readBody(req).then((input) => {
+      const name = String(input.name || '').trim();
+      if (!name) return err(res, 400, 'Il nome del soggetto è obbligatorio');
+      const id = input.id || slugify(name);
+      if (getSubject(id)) return err(res, 409, 'Esiste già una scheda soggetto con id ' + id);
+      return json(res, 201, { subject: subjectPublic(createSubject({ id, name })) });
+    }).catch(e => err(res, 400, e.message));
+  }
+  // GET /api/subjects/:id  (payload completo: sezioni + capitoli + opere)
+  if (method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'subjects') {
+    const full = getFullSubject(parts[2]);
+    if (!full) return err(res, 404, 'Soggetto non trovato');
+    full.works = (full.works || []).map(w => ({
+      ...w,
+      imageUrl: w.hasImage ? '/api/subjects/' + parts[2] + '/works/' + w.id + '/image' : (w.imageUrl || '')
+    }));
+    return json(res, 200, full);
+  }
+  // PATCH /api/subjects/:id  (revisione sezioni; capitoli/opere come array)
+  if (method === 'PATCH' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'subjects') {
+    return readBody(req).then((input) => {
+      const patch = {};
+      for (const [k, col] of [['name', 'name'], ['shortDesc', 'short_desc'], ['intro', 'intro'], ['origins', 'origins'], ['symbols', 'symbols'], ['interpretations', 'interpretations'], ['curiosities', 'curiosities'], ['status', 'status']]) {
+        if (input[k] !== undefined) patch[col] = String(input[k]);
+      }
+      const saved = updateSubject(parts[2], patch);
+      if (!saved) return err(res, 404, 'Soggetto non trovato');
+      if (Array.isArray(input.chapters)) replaceSubjectChapters(parts[2], input.chapters.map(c => ({ era: c.era, text: c.text })));
+      if (Array.isArray(input.works)) {
+        // Preserva i BLOB delle immagini già scaricate: ogni voce viene aggiornata
+        // riusando l'immagine esistente (per id) quando il client non ne fornisce una.
+        const existing = listSubjectWorks(parts[2]);
+        replaceSubjectWorks(parts[2], input.works.map(w => {
+          const old = existing.find(x => String(x.id) === String(w.id));
+          let imageData = null, imageMime = 'image/jpeg', imageStatus = 'missing', imageUrl = '', imagePage = '';
+          if (old && old.hasImage) {
+            const img = getSubjectWorkImage(parts[2], old.id);
+            if (img) { imageData = img.data; imageMime = img.mime; imageStatus = 'ok'; }
+            imageUrl = old.imageUrl || ''; imagePage = old.imagePage || '';
+          }
+          return { title: w.title, artist: w.artist, date: w.date, museum: w.museum, caption: w.caption, imageData, imageMime, imageStatus, imageUrl, imagePage };
+        }));
+      }
+      return json(res, 200, getFullSubject(parts[2]));
+    }).catch(e => err(res, 400, e.message));
+  }
+  // DELETE /api/subjects/:id
+  if (method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'subjects') {
+    if (!getSubject(parts[2])) return err(res, 404, 'Soggetto non trovato');
+    deleteSubject(parts[2]);
+    return json(res, 200, { ok: true });
+  }
+  // POST /api/subjects/:id/generate/:step  (intro | chapters | works | closing)
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'generate' &&
+      ['intro', 'chapters', 'works', 'closing'].includes(parts[4])) {
+    const subject = getSubject(parts[2]);
+    if (!subject) return err(res, 404, 'Soggetto non trovato');
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) return err(res, 503, 'OPENROUTER_API_KEY non configurata');
+    const step = parts[4];
+    return Promise.resolve().then(async () => {
+      if (step === 'intro') {
+        const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSubjectIntroPrompt(subject) }], apiKey);
+        const d = normalizeSubjectOutline(raw.data);
+        updateSubject(subject.id, { short_desc: d.shortDesc, intro: d.intro, origins: d.origins });
+        return json(res, 200, { subject: getFullSubject(subject.id) });
+      }
+      if (step === 'chapters') {
+        const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSubjectChaptersPrompt(subject) }], apiKey);
+        replaceSubjectChapters(subject.id, normalizeSubjectChapters(raw.data));
+        return json(res, 200, { chapters: listSubjectChapters(subject.id) });
+      }
+      if (step === 'closing') {
+        const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSubjectClosingPrompt(subject) }], apiKey);
+        const d = normalizeSubjectClosing(raw.data);
+        updateSubject(subject.id, { symbols: JSON.stringify(d.symbols || []), interpretations: d.interpretations, curiosities: d.curiosities });
+        return json(res, 200, { subject: getFullSubject(subject.id) });
+      }
+      // step === 'works': 6-10 opere reali con lo stesso soggetto + download immagini
+      const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildSubjectWorksPrompt(subject) }], apiKey);
+      const works = normalizeSimilar(raw.data, {});
+      const resolved = await resolveSimilarImages(works);
+      for (const w of resolved) {
+        if (w.imageStatus === 'ok' && w.imageUrl) {
+          try {
+            const resp = await fetch(w.imageUrl, { headers: { 'User-Agent': 'artest-didattico/1.0 (local)' }, redirect: 'follow' });
+            if (resp.ok) {
+              const buf = Buffer.from(await resp.arrayBuffer());
+              if (buf.length > 0) { w.imageData = buf; w.imageMime = String(resp.headers.get('content-type') || 'image/jpeg').split(';')[0]; }
+              else w.imageStatus = 'failed';
+            } else w.imageStatus = 'failed';
+          } catch { w.imageStatus = 'failed'; }
+          await new Promise(r => setTimeout(r, 150));
+        }
+      }
+      const saved = replaceSubjectWorks(subject.id, resolved);
+      return json(res, 200, { works: saved });
+    }).catch(e => { console.error('ERR genSubject:', e); err(res, 500, e.message); });
+  }
+  // POST /api/subjects/:id/approve
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'approve') {
+    if (!getSubject(parts[2])) return err(res, 404, 'Soggetto non trovato');
+    approveSubject(parts[2]);
+    return json(res, 200, { ok: true, status: 'ready', subject: getFullSubject(parts[2]) });
+  }
+  // GET /api/subjects/:id/works/:wid/image — BLOB opera rappresentativa
+  if (method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'works' && parts[5] === 'image') {
+    const img = getSubjectWorkImage(parts[2], Number(parts[4]));
+    if (!img) return err(res, 404, 'Immagine non disponibile');
+    const buf = Buffer.from(img.data);
+    res.writeHead(200, { 'Content-Type': img.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    return res.end(buf);
+  }
+
+  // ================= Schede FACCIA A FACCIA =================
+  // GET /api/comparisons
+  if (method === 'GET' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'comparisons') {
+    return json(res, 200, { comparisons: listComparisons().map(comparisonPublic) });
+  }
+  // POST /api/comparisons { title?, comparison_type }
+  if (method === 'POST' && parts.length === 2 && parts[0] === 'api' && parts[1] === 'comparisons') {
+    return readBody(req).then((input) => {
+      const id = input.id || ('confronto-' + Date.now().toString(36));
+      if (getComparison(id)) return err(res, 409, 'Esiste già un confronto con id ' + id);
+      const created = createComparison({ id, title: String(input.title || ''), comparisonType: input.comparison_type === 'same-artist' ? 'same-artist' : 'same-subject' });
+      return json(res, 201, { comparison: comparisonPublic(created) });
+    }).catch(e => err(res, 400, e.message));
+  }
+  // GET /api/comparisons/:id  (payload completo, lati arricchiti con metadati/URL immagine)
+  if (method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'comparisons') {
+    const full = getFullComparison(parts[2]);
+    if (!full) return err(res, 404, 'Confronto non trovato');
+    full.sides = (full.sides || []).map(s => {
+      if (s.source === 'library' && s.artworkId) {
+        const a = getArtwork(s.artworkId);
+        if (a) {
+          s.title = s.title || a.title;
+          s.artist = s.artist || a.artist;
+          s.date = s.date || a.date;
+          s.museum = s.museum || a.institution;
+          s.imageUrl = '/api/artworks/' + a.id + '/image';
+          s.imageStatus = a.hasImage ? 'ok' : 'missing';
+        }
+      } else if (s.source === 'external') {
+        s.imageUrl = s.hasImage ? '/api/comparisons/' + parts[2] + '/side/' + s.side + '/image' : (s.imageUrl || '');
+      }
+      return s;
+    });
+    return json(res, 200, full);
+  }
+  // PATCH /api/comparisons/:id  (revisione sezioni + punti)
+  if (method === 'PATCH' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'comparisons') {
+    return readBody(req).then((input) => {
+      const patch = {};
+      for (const [k, col] of [['title', 'title'], ['comparisonType', 'comparison_type'], ['intro', 'intro'], ['technique', 'technique'], ['context', 'context'], ['critique', 'critique'], ['curiosities', 'curiosities'], ['status', 'status']]) {
+        if (input[k] !== undefined) patch[col] = String(input[k]);
+      }
+      const saved = updateComparison(parts[2], patch);
+      if (!saved) return err(res, 404, 'Confronto non trovato');
+      if (Array.isArray(input.points)) replaceComparisonPoints(parts[2], input.points.map(p => ({ kind: p.kind, title: p.title, text: p.text })));
+      return json(res, 200, getFullComparison(parts[2]));
+    }).catch(e => err(res, 400, e.message));
+  }
+  // DELETE /api/comparisons/:id
+  if (method === 'DELETE' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'comparisons') {
+    if (!getComparison(parts[2])) return err(res, 404, 'Confronto non trovato');
+    deleteComparison(parts[2]);
+    return json(res, 200, { ok: true });
+  }
+  // POST /api/comparisons/:id/sides { a: {...}, b: {...} }
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'sides') {
+    return readBody(req).then(async (input) => {
+      const comparison = getComparison(parts[2]);
+      if (!comparison) return err(res, 404, 'Confronto non trovato');
+      for (const side of ['a', 'b']) {
+        const s = input[side];
+        if (!s) continue;
+        if (s.source === 'library' && s.artworkId) {
+          const artwork = getArtwork(s.artworkId);
+          if (!artwork) return err(res, 400, 'Opera "' + s.artworkId + '" non trovata nel database');
+          setComparisonSide(comparison.id, side, {
+            source: 'library', artworkId: artwork.id,
+            title: artwork.title, artist: artwork.artist, date: artwork.date, museum: artwork.institution
+          });
+        } else {
+          let imageData = null, imageMime = 'image/jpeg', imageStatus = 'missing', imageUrl = '';
+          if (s.imageDataUrl) {
+            const match = String(s.imageDataUrl).match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+            if (!match) return err(res, 400, 'imageDataUrl non valido per il lato ' + side);
+            imageData = Buffer.from(match[2], 'base64');
+            imageMime = match[1];
+            imageStatus = 'ok';
+          } else if (s.imageUrl) {
+            imageUrl = String(s.imageUrl).trim();
+            try {
+              const resp = await fetch(imageUrl, { headers: { 'User-Agent': 'artest-didattico/1.0 (local)' }, redirect: 'follow' });
+              if (resp.ok) {
+                const buf = Buffer.from(await resp.arrayBuffer());
+                if (buf.length > 0) { imageData = buf; imageMime = String(resp.headers.get('content-type') || 'image/jpeg').split(';')[0]; imageStatus = 'ok'; }
+                else imageStatus = 'failed';
+              } else imageStatus = 'failed';
+            } catch { imageStatus = 'failed'; }
+          }
+          setComparisonSide(comparison.id, side, {
+            source: 'external', title: String(s.title || ''), artist: String(s.artist || ''),
+            date: String(s.date || ''), museum: String(s.museum || ''),
+            imageData, imageMime, imageUrl: imageUrl || '', imageStatus
+          });
+        }
+      }
+      return json(res, 200, { comparison: getFullComparison(parts[2]) });
+    }).catch(e => err(res, 400, e.message));
+  }
+  // POST /api/comparisons/:id/generate/:step  (intro | points | analysis)
+  if (method === 'POST' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'generate' &&
+      ['intro', 'points', 'analysis'].includes(parts[4])) {
+    const comparison = getComparison(parts[2]);
+    if (!comparison) return err(res, 404, 'Confronto non trovato');
+    const apiKey = getOpenRouterApiKey();
+    if (!apiKey) return err(res, 503, 'OPENROUTER_API_KEY non configurata');
+    const step = parts[4];
+    return Promise.resolve().then(async () => {
+      if (step === 'intro') {
+        const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildComparisonIntroPrompt(comparisonRef(comparison)) }], apiKey);
+        const intro = String(normalizeComparisonIntro(raw.data) || '');
+        updateComparison(comparison.id, { intro });
+        return json(res, 200, { comparison: getFullComparison(comparison.id) });
+      }
+      if (step === 'points') {
+        const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildComparisonPointsPrompt(comparisonRef(comparison)) }], apiKey);
+        const d = normalizeComparisonPoints(raw.data);
+        replaceComparisonPoints(comparison.id, [...(d.similar || []).map(p => ({ kind: 'similar', title: p.title, text: p.text })), ...(d.different || []).map(p => ({ kind: 'different', title: p.title, text: p.text }))]);
+        return json(res, 200, { points: listComparisonPoints(comparison.id) });
+      }
+      // step === 'analysis'
+      const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildComparisonAnalysisPrompt(comparisonRef(comparison)) }], apiKey);
+      const d = normalizeComparisonAnalysis(raw.data);
+      updateComparison(comparison.id, { technique: d.technique, context: d.context, critique: d.critique, curiosities: d.curiosities });
+      return json(res, 200, { comparison: getFullComparison(comparison.id) });
+    }).catch(e => { console.error('ERR genComparison:', e); err(res, 500, e.message); });
+  }
+  // POST /api/comparisons/:id/approve — genera la miniatura composita (PIL) e passa a ready
+  if (method === 'POST' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'approve') {
+    return Promise.resolve().then(async () => {
+      const comparison = getComparison(parts[2]);
+      if (!comparison) return err(res, 404, 'Confronto non trovato');
+      let warning = null;
+      try {
+        const thumb = await renderComposeThumb(comparison);
+        if (thumb) setComparisonThumb(comparison.id, thumb.data, 'image/jpeg');
+        else warning = 'Miniatura composita non generata: manca un’immagine per uno dei due lati.';
+      } catch (e) { warning = 'Miniatura composita non generata: ' + e.message; console.error('ERR compose:', e); }
+      approveComparison(comparison.id);
+      return json(res, 200, { ok: true, status: 'ready', comparison: getFullComparison(parts[2]), thumbWarning: warning });
+    }).catch(e => err(res, 500, e.message));
+  }
+  // GET /api/comparisons/:id/side/:side/image — BLOB immagine lato esterno
+  if (method === 'GET' && parts.length === 6 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'side' && parts[5] === 'image') {
+    const img = getComparisonSideImage(parts[2], parts[4]);
+    if (!img) return err(res, 404, 'Immagine non disponibile');
+    const buf = Buffer.from(img.data);
+    res.writeHead(200, { 'Content-Type': img.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    return res.end(buf);
+  }
+  // GET /api/comparisons/:id/thumb — BLOB miniatura composita
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'thumb') {
+    const row = getDb().prepare('SELECT thumb_data, thumb_mime FROM comparisons WHERE id = ?').get(parts[2]);
+    if (!row || !row.thumb_data) return err(res, 404, 'Miniatura non disponibile');
+    const buf = Buffer.from(row.thumb_data);
+    res.writeHead(200, { 'Content-Type': row.thumb_mime || 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+    return res.end(buf);
+  }
+
   return err(res, 404, 'Endpoint non trovato: ' + method + ' ' + urlPath);
 }
 
@@ -675,6 +960,194 @@ async function renderAnnotated(artwork) {
   }
 }
 
+// ---------- Schede Soggetto e Faccia a faccia: serializzatori, prompt, normalizzatori ----------
+function subjectPublic(s) {
+  return { id: s.id, name: s.name, shortDesc: s.shortDesc, status: s.status, createdAt: s.createdAt, updatedAt: s.updatedAt };
+}
+function comparisonPublic(c) {
+  return { id: c.id, title: c.title, comparisonType: c.comparisonType, hasThumb: c.hasThumb, status: c.status, createdAt: c.createdAt, updatedAt: c.updatedAt };
+}
+function subjectRef(s) { return { id: s.id, name: s.name, shortDesc: s.shortDesc, intro: s.intro, origins: s.origins }; }
+function comparisonRef(c) {
+  const sides = listComparisonSides(c.id);
+  const a = sides.find(s => s.side === 'a') || {};
+  const b = sides.find(s => s.side === 'b') || {};
+  return {
+    id: c.id, title: c.title, type: c.comparison_type,
+    a: { title: a.title || '', artist: a.artist || '', date: a.date || '', museum: a.museum || '' },
+    b: { title: b.title || '', artist: b.artist || '', date: b.date || '', museum: b.museum || '' }
+  };
+}
+export function buildSubjectIntroPrompt(subject) {
+  return `Sei uno storico dell’arte e un educatore italiano. Prepara l’apertura della scheda didattica sul SOGGETTO "${subject.name}" nella storia dell’arte: come questo soggetto è stato rappresentato da artisti diversi, di epoche e paesi diversi, fino ai nostri giorni.
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"shortDesc":"...","intro":"...","origins":"..."}
+
+Regole:
+- "shortDesc": una o due frasi (max 40 parole) per la card di libreria.
+- "intro" (120-180 parole): che cos’è il soggetto, da quale fonte nasce (Vangelo, mito, letteratura, storia), perché gli artisti lo hanno rappresentato.
+- "origins" (120-180 parole): le prime attestazioni nell’arte (paleocristiana, bizantina, medievale…), gli schemi compositivi fondativi e come sono cambiati nel tempo.
+- Solo fatti di cui sei ragionevolmente certo; in italiano chiaro.`;
+}
+export function buildSubjectChaptersPrompt(subject) {
+  return `Sei uno storico dell’arte italiano. Racconta l’EVOLUZIONE del soggetto "${subject.name}" nella storia dell’arte attraverso 6 capitoli cronologici, dal Medioevo (o dalle origini) al Novecento/contemporaneo.
+
+Contesto: ${subject.intro ? subject.intro.slice(0, 600) : 'nessuna introduzione ancora generata'}
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"chapters":[{"era":"Titolo epoca/corrente","text":"..."}, ... 6 voci]}
+
+Regole per ogni capitolo:
+- "era": nome di epoca o corrente (es. "Rinascimento fiorentino", "Barocco", "Simbolismo").
+- "text" (80-130 parole): come cambia il soggetto in quell’epoca — composizione, stile, luce, colore, significato — citando 1-2 artisti e opere REALI e celebri per ciascun capitolo (titolo, autore, data approssimativa).
+- Ordine cronologico stretto; solo fatti ragionevolmente certi; in italiano chiaro.`;
+}
+export function buildSubjectWorksPrompt(subject) {
+  const chapters = listSubjectChapters(subject.id);
+  const eraHint = chapters.map(c => c.era).slice(0, 6).join(', ');
+  return `Sei uno storico dell’arte italiano. Proponi 8 opere REALI e CELEBRI che rappresentano il soggetto "${subject.name}", scelte per coprire l’evoluzione del soggetto (epoche suggerite: ${eraHint || 'dal Medioevo al Novecento'}).
+
+Regole:
+- SOLO opere reali e riconoscibili: più sono celebri, meglio è (devono avere una foto in pubblico dominio su Wikimedia Commons o al MET).
+- Varietà di autori, secoli e paesi.
+- Per ogni opera: "title" (in italiano se noto), "artist", "date", "museum" (museo/collezione), "caption" (perché è importante per l’evoluzione di QUESTO soggetto, max 25 parole), "search" (parole chiave per trovare l’immagine: titolo originale + autore, in inglese se aiuta; es. "Annunciation Memling").
+- Non inventare nulla: se non sei certo che un’opera esista, sostituiscila.
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"works":[{"title":"...","artist":"...","date":"...","museum":"...","caption":"...","search":"..."}, ... 8 voci]}`;
+}
+export function buildSubjectClosingPrompt(subject) {
+  return `Sei uno storico dell’arte e un educatore italiano. Completa la scheda didattica sul soggetto "${subject.name}" nella storia dell’arte.
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"symbols":[{"symbol":"...","meaning":"..."}],"interpretations":"...","curiosities":"..."}
+
+Regole:
+- "symbols": 5-7 attributi/simboli ricorrenti nelle rappresentazioni di QUESTO soggetto, con il loro significato (es. giglio → purezza).
+- "interpretations" (120-180 parole): come il soggetto è stato interpretato diversamente nel tempo — teologico, politico, stilistico, psicologico — con 1-2 esempi reali.
+- "curiosities" (80-120 parole): 2-3 curiosità verificate o dibattute dagli studiosi.
+- In italiano chiaro; solo fatti ragionevolmente certi.`;
+}
+export function buildComparisonIntroPrompt(c) {
+  return `Sei uno storico dell’arte e un educatore italiano. Scrivi l’introduzione di una scheda di CONFRONTO ("faccia a faccia") tra due opere.
+
+Opera A: ${c.a.title || '?'}${c.a.artist ? ' di ' + c.a.artist : ''}${c.a.date ? ' (' + c.a.date + ')' : ''}${c.a.museum ? ', ' + c.a.museum : ''}
+Opera B: ${c.b.title || '?'}${c.b.artist ? ' di ' + c.b.artist : ''}${c.b.date ? ' (' + c.b.date + ')' : ''}${c.b.museum ? ', ' + c.b.museum : ''}
+Tipo di confronto: ${c.type === 'same-artist' ? 'stesso artista in due fasi della sua carriera' : 'stesso soggetto tra due artisti'}
+
+Rispondi SOLO con JSON valido: {"intro":"..."}
+
+Regole: "intro" (120-180 parole) — perché questo accostamento è interessante, che cosa hanno in comune le due opere a colpo d’occhio e che cosa le allontana; tono didattico, in italiano chiaro.`;
+}
+export function buildComparisonPointsPrompt(c) {
+  return `Sei uno storico dell’arte italiano. Confronta le due opere seguenti e produci le voci di confronto.
+
+Opera A: ${c.a.title || '?'}${c.a.artist ? ' di ' + c.a.artist : ''}${c.a.date ? ' (' + c.a.date + ')' : ''}
+Opera B: ${c.b.title || '?'}${c.b.artist ? ' di ' + c.b.artist : ''}${c.b.date ? ' (' + c.b.date + ')' : ''}
+Tipo: ${c.type === 'same-artist' ? 'stesso artista, fasi diverse' : 'stesso soggetto, artisti diversi'}
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"similar":[{"title":"...","text":"..."}],"different":[{"title":"...","text":"..."}]}
+
+Regole:
+- "similar": 3-5 voci di elementi che le due opere condividono (composizione, iconografia, luce, simboli, gesti…). Ogni voce: "title" breve (es. "La luce") e "text" (40-70 parole) che spiega il punto in comune.
+- "different": 4-6 voci di elementi che le differenziano (stile, tecnica, colore, atmosfera, significato, contesto…). Ogni voce: "title" breve e "text" (40-70 parole).
+- Solo fatti ragionevolmente certi; in italiano chiaro.`;
+}
+export function buildComparisonAnalysisPrompt(c) {
+  return `Sei uno storico dell’arte italiano. Concludi la scheda di confronto tra due opere.
+
+Opera A: ${c.a.title || '?'}${c.a.artist ? ' di ' + c.a.artist : ''}${c.a.date ? ' (' + c.a.date + ')' : ''}${c.a.museum ? ', ' + c.a.museum : ''}
+Opera B: ${c.b.title || '?'}${c.b.artist ? ' di ' + c.b.artist : ''}${c.b.date ? ' (' + c.b.date + ')' : ''}${c.b.museum ? ', ' + c.b.museum : ''}
+
+Rispondi SOLO con JSON valido, senza markdown, nella forma:
+{"technique":"...","context":"...","critique":"...","curiosities":"..."}
+
+Regole:
+- "technique" (90-140 parole): tecnica a confronto — supporto, materia, pennellata, luce, colore, contrasti.
+- "context" (80-130 parole): i due contesti storico-artistici (epoche, culture, committenze).
+- "critique" (80-130 parole): interpretazione critica — quale lettura prevale, che cosa insegna il confronto.
+- "curiosities" (60-100 parole): 1-2 curiosità verificate.
+- In italiano chiaro; solo fatti ragionevolmente certi.`;
+}
+export function normalizeSubjectOutline(raw) {
+  const d = (raw && typeof raw === 'object') ? raw : {};
+  return {
+    shortDesc: String(d.shortDesc || d.short_desc || '').trim().slice(0, 300),
+    intro: String(d.intro || '').trim().slice(0, 8000),
+    origins: String(d.origins || '').trim().slice(0, 8000)
+  };
+}
+export function normalizeSubjectChapters(raw) {
+  const list = Array.isArray(raw) ? raw : (Array.isArray(raw?.chapters) ? raw.chapters : []);
+  return list.slice(0, 8).map(c => ({ era: String(c.era || '').trim().slice(0, 120), text: String(c.text || '').trim().slice(0, 4000) }));
+}
+export function normalizeSubjectClosing(raw) {
+  const d = (raw && typeof raw === 'object') ? raw : {};
+  return {
+    symbols: (Array.isArray(d.symbols) ? d.symbols : []).slice(0, 10).map(s => ({ symbol: String(s.symbol || s.name || '').trim().slice(0, 120), meaning: String(s.meaning || '').trim().slice(0, 600) })),
+    interpretations: String(d.interpretations || '').trim().slice(0, 8000),
+    curiosities: String(d.curiosities || '').trim().slice(0, 6000)
+  };
+}
+export function normalizeComparisonIntro(raw) {
+  const d = (raw && typeof raw === 'object') ? raw : {};
+  return String(d.intro || d.text || '').trim().slice(0, 8000);
+}
+export function normalizeComparisonPoints(raw) {
+  const d = (raw && typeof raw === 'object') ? raw : {};
+  const map = (list) => (Array.isArray(list) ? list : []).slice(0, 8).map(p => ({
+    title: String(p.title || '').trim().slice(0, 200),
+    text: String(p.text || '').trim().slice(0, 3000)
+  }));
+  return { similar: map(d.similar), different: map(d.different) };
+}
+export function normalizeComparisonAnalysis(raw) {
+  const d = (raw && typeof raw === 'object') ? raw : {};
+  return {
+    technique: String(d.technique || '').trim().slice(0, 8000),
+    context: String(d.context || '').trim().slice(0, 8000),
+    critique: String(d.critique || '').trim().slice(0, 8000),
+    curiosities: String(d.curiosities || '').trim().slice(0, 6000)
+  };
+}
+
+// Miniatura composita "faccia a faccia": metà sinistra A + metà destra B (PIL).
+async function renderComposeThumb(comparison) {
+  const sides = listComparisonSides(comparison.id);
+  const sideA = sides.find(s => s.side === 'a');
+  const sideB = sides.find(s => s.side === 'b');
+  if (!sideA || !sideB) return null;
+  const getSidePath = async (side) => {
+    let data = null, mime = 'image/jpeg';
+    if (side.source === 'library' && side.artworkId) {
+      const images = getArtworkImageData(side.artworkId);
+      if (images && images.clean) { data = Buffer.from(images.clean.data); mime = images.clean.mime || 'image/jpeg'; }
+    }
+    if (!data) {
+      const img = getComparisonSideImage(comparison.id, side.side);
+      if (img) { data = Buffer.from(img.data); mime = img.mime || 'image/jpeg'; }
+    }
+    if (!data) return null;
+    const p = join(UPLOAD_DIR, comparison.id + '.' + side.side + '.src.jpg');
+    await writeFile(p, data);
+    return p;
+  };
+  const pa = await getSidePath(sideA);
+  const pb = await getSidePath(sideB);
+  if (!pa || !pb) return null;
+  const outPath = join(UPLOAD_DIR, comparison.id + '.thumb.jpg');
+  try {
+    await execFileAsync('python3', ['compose_thumb.py', pa, pb, outPath], { cwd: APP_ROOT, timeout: 60000 });
+    return { data: await readFile(outPath) };
+  } finally {
+    unlink(pa).catch(() => {});
+    unlink(pb).catch(() => {});
+    unlink(outPath).catch(() => {});
+  }
+}
+
 // ---------- static + avvio ----------
 async function serveStatic(req, res, urlPath) {
   const requestPath = urlPath === '/' ? '/index.html' : urlPath;
@@ -727,10 +1200,12 @@ const server = createServer((req, res) => {
   return serveStatic(req, res, urlPath);
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`art-creator: http://${HOST}:${PORT}`);
-  console.log(`DB: SQLite (node:sqlite)`);
-  console.log(`Modello visione: ${VISION_MODEL}`);
-  console.log(`Modello testo: ${TEXT_MODEL}`);
-  console.log(getOpenRouterApiKey() ? 'OpenRouter API key: configurata' : 'OpenRouter API key: NON configurata');
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  server.listen(PORT, HOST, () => {
+    console.log(`art-creator: http://${HOST}:${PORT}`);
+    console.log(`DB: SQLite (node:sqlite)`);
+    console.log(`Modello visione: ${VISION_MODEL}`);
+    console.log(`Modello testo: ${TEXT_MODEL}`);
+    console.log(getOpenRouterApiKey() ? 'OpenRouter API key: configurata' : 'OpenRouter API key: NON configurata');
+  });
+}

@@ -321,6 +321,94 @@ test('normalizeAnalysis surfaces web citations as sources', () => {
   assert.equal(result.sources.length, 2);
 });
 
+import { buildSubjectIntroPrompt, normalizeSubjectOutline, normalizeSubjectChapters, normalizeSubjectClosing, buildSubjectWorksPrompt, buildSubjectChaptersPrompt, buildComparisonIntroPrompt, buildComparisonPointsPrompt, buildComparisonAnalysisPrompt, normalizeComparisonIntro, normalizeComparisonPoints, normalizeComparisonAnalysis } from './art-creator/server.mjs';
+
+test('new schemas (subjects + comparisons) CRUD and RO roundtrip', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artest-schemas-'));
+  const dbPath = join(dir, 'test.db');
+  const previous = process.env.ART_CREATOR_DB;
+  process.env.ART_CREATOR_DB = dbPath;
+  try {
+    const mod = await import('./art-creator/db.mjs?t=' + Date.now());
+    mod.initSchema();
+    const s = mod.createSubject({ id: 'nativita', name: 'Natività' });
+    assert.equal(s.status, 'draft');
+    mod.updateSubject('nativita', { intro: 'Intro di prova', origins: 'Origini' });
+    mod.replaceSubjectChapters('nativita', [{ era: 'Medioevo', text: 'testo 1' }, { era: 'Rinascimento', text: 'testo 2' }]);
+    mod.replaceSubjectWorks('nativita', [{ title: 'Natività', artist: 'Giotto', imageStatus: 'missing' }]);
+    mod.approveSubject('nativita');
+    const subjectRO = mod.getSubjectRO('nativita');
+    assert.equal(subjectRO.status, 'ready');
+    assert.equal(subjectRO.intro, 'Intro di prova');
+    assert.equal(subjectRO.chapters.length, 2);
+    assert.equal(subjectRO.works.length, 1);
+    assert.equal(mod.listReadySubjectsRO().length, 1);
+
+    mod.createArtwork({ id: 'w1', title: 'Natività', artist: 'Giotto', imagePath: 'uploads/x.jpg', imageData: Buffer.from([1, 2, 3]), imageMime: 'image/jpeg', imageWidth: 10, imageHeight: 10 });
+    const c = mod.createComparison({ id: 'cmp-1', title: 'Confronto', comparisonType: 'same-subject' });
+    mod.setComparisonSide(c.id, 'a', { source: 'library', artworkId: 'w1', title: 'A' });
+    mod.setComparisonSide(c.id, 'b', { source: 'external', title: 'B', imageData: Buffer.from([4, 5, 6]), imageMime: 'image/jpeg', imageStatus: 'ok' });
+    mod.replaceComparisonPoints(c.id, [{ kind: 'similar', title: 'Comune', text: 's' }, { kind: 'different', title: 'Diverso', text: 'd' }]);
+    mod.approveComparison(c.id);
+    const comparisonRO = mod.getComparisonRO('cmp-1');
+    assert.equal(comparisonRO.status, 'ready');
+    assert.equal(comparisonRO.sides.length, 2);
+    assert.equal(comparisonRO.sides.find(x => x.side === 'a').source, 'library');
+    assert.equal(comparisonRO.sides.find(x => x.side === 'b').hasImage, true);
+    assert.equal(comparisonRO.points.length, 2);
+    assert.equal(comparisonRO.points.find(p => p.kind === 'similar').title, 'Comune');
+    assert.equal(mod.getComparisonSideImageRO('cmp-1', 'b') !== null, true);
+    assert.equal(mod.getComparisonThumbRO('cmp-1'), null);
+    mod.setComparisonThumb('cmp-1', Buffer.from([9]), 'image/jpeg');
+    assert.equal(mod.getComparisonThumbRO('cmp-1').data.length, 1);
+    assert.equal(mod.listReadyComparisonsRO().length, 1);
+    mod.deleteComparison('cmp-1');
+    assert.equal(mod.getComparisonRO('cmp-1'), null);
+    mod.deleteSubject('nativita');
+    assert.equal(mod.getSubjectRO('nativita'), null);
+  } finally {
+    if (previous === undefined) delete process.env.ART_CREATOR_DB; else process.env.ART_CREATOR_DB = previous;
+    await import('node:fs/promises').then(fs => fs.rm(dir, { recursive: true, force: true }));
+  }
+});
+
+test('subject prompts and normalizers produce structured content', () => {
+  const introPrompt = buildSubjectIntroPrompt({ name: 'Annunciazione' });
+  assert.equal(introPrompt.includes('Annunciazione'), true);
+  assert.equal(introPrompt.includes('"shortDesc"'), true);
+  const outline = normalizeSubjectOutline({ shortDesc: 'S', intro: 'I', origins: 'O', extra: 'x' });
+  assert.deepEqual(outline, { shortDesc: 'S', intro: 'I', origins: 'O' });
+  const chapters = normalizeSubjectChapters({ chapters: [{ era: 'Barocco', text: 't' }, { era: 'Rinascimento', text: 't' }] });
+  assert.equal(chapters.length, 2);
+  assert.equal(chapters[0].era, 'Barocco');
+  const closing = normalizeSubjectClosing({ symbols: [{ symbol: 'Giglio', meaning: 'Purezza' }], interpretations: 'I', curiosities: 'C' });
+  assert.equal(closing.symbols[0].symbol, 'Giglio');
+  assert.equal(closing.interpretations, 'I');
+  const worksPrompt = buildSubjectWorksPrompt({ id: 'x', name: 'Natività' });
+  assert.equal(worksPrompt.includes('Natività'), true);
+  const chaptersPrompt = buildSubjectChaptersPrompt({ id: 'x', name: 'Natività', intro: '' });
+  assert.equal(chaptersPrompt.includes('"chapters"'), true);
+});
+
+test('comparison prompts and normalizers produce structured content', () => {
+  const ref = { id: 'c1', title: 'T', comparison_type: 'same-subject', a: { title: 'A', artist: 'X', date: '1400', museum: 'M' }, b: { title: 'B', artist: 'Y', date: '1500', museum: 'N' } };
+  const intro = normalizeComparisonIntro({ intro: 'Intro' });
+  assert.equal(intro, 'Intro');
+  const points = normalizeComparisonPoints({ similar: [{ title: 'S', text: 's' }], different: [{ title: 'D', text: 'd' }] });
+  assert.equal(points.similar.length, 1);
+  assert.equal(points.different[0].title, 'D');
+  const analysis = normalizeComparisonAnalysis({ technique: 'T', context: 'C', critique: 'K', curiosities: 'Q' });
+  assert.equal(analysis.technique, 'T');
+  assert.equal(analysis.curiosities, 'Q');
+  const introPrompt = buildComparisonIntroPrompt(ref);
+  assert.equal(introPrompt.includes('Opera A: A di X (1400), M'), true);
+  const pointsPrompt = buildComparisonPointsPrompt(ref);
+  assert.equal(pointsPrompt.includes('"similar"'), true);
+  assert.equal(pointsPrompt.includes('"different"'), true);
+  const analysisPrompt = buildComparisonAnalysisPrompt(ref);
+  assert.equal(analysisPrompt.includes('"technique"'), true);
+});
+
 test('callModel extracts url_citation annotations from the message', async () => {
   const previous = process.env.OPENROUTER_API_KEY;
   process.env.OPENROUTER_API_KEY = 'test-key';

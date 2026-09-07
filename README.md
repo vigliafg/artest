@@ -10,7 +10,7 @@ Viewer didattico React per esplorare opere d’arte **dettaglio per dettaglio**.
 - `src/data.js`: opera dimostrativa inclusa, usata solo come ripiego offline quando non ci sono schede pubblicate.
 - `src/api/nvidiaAnalysis.js`: client legacy per l’analisi live (usato dal flusso dimostrativo).
 - `src/App.jsx`: carica la libreria da `GET /api/library` e la scheda completa da `GET /api/artworks/:id`.
-- `art-creator/`: app sorella che genera e pubblica le schede (v. il suo README).
+- `art-creator/`: app sorella che genera e pubblica le schede dei tre tipi (dipinto, soggetto, confronto) — pipeline AI sequenziale con feedback di avanzamento, editor a sezioni, approvazione con miniatura composita (PIL).
 - `server.mjs`: server statico + API. Oltre agli endpoint di analisi live, espone la **libreria pubblicata** leggendo il DB di art-creator **in sola lettura** (connessioni `readOnly`, zero scritture).
 - `test_server.mjs`: test automatici del backend e degli accessor read-only.
 
@@ -19,6 +19,15 @@ Viewer didattico React per esplorare opere d’arte **dettaglio per dettaglio**.
 1. **Libreria** — `GET /api/library` elenca le opere con stato `ready` nel DB di art-creator (`art-creator/data/art-creator.db`), con le immagini servite dal BLOB.
 2. **Scheda completa** — all’apertura di un’opera il browser chiama `GET /api/artworks/:id`: il server restituisce metadati, immagine pulita + URL dell’immagine annotata, `overview` (dipinto/artista), `details` con i testi `studio`/`approfondimento` per ciascun riquadro, fonti e le 10 `similarWorks` (thumbnail BLOB).
 3. **Esplorazione** — la selezione di un dettaglio (dall’immagine o dalle chip) apre le due tab **Studio del dettaglio** e **Approfondimento** con le sezioni corrispondenti già compilate nella scheda; in cima alla pagina le tab **Presentazione | Opere simili** mostrano i testi e il carosello delle opere con lo stesso soggetto.
+
+### Tre tipi di scheda
+
+Oltre al singolo dipinto, la libreria include altri due tipi di scheda pubblicati da art-creator (stato `ready`):
+
+- **Soggetto nella storia dell’arte** (`GET /api/subjects/:id`) — come lo stesso soggetto (Annunciazione, Natività, battaglie navali…) è stato rappresentato nei secoli: introduzione, origini iconografiche, **timeline per epoche** (capitoli ordinati), galleria di **opere rappresentative** con immagini BLOB, attributi/simboli ricorrenti, interpretazioni e curiosità. Vista React dedicata: `SubjectView.jsx`.
+- **Faccia a faccia** (`GET /api/comparisons/:id`) — confronto critico di due opere (stesso soggetto tra artisti o stesso artista in due fasi): le due opere affiancate (lato dal DB o esterno con immagine BLOB), introduzione, **punti in comune / differenze** (elenchi strutturati), tecnica, contesto, interpretazione critica e curiosità. Miniatura composita (metà sinistra A + metà destra B) generata via PIL alla pubblicazione. Vista React dedicata: `ComparisonView.jsx`.
+
+Le tabelle SQLite corrispondenti (`subjects`, `subject_chapters`, `subject_works`, `comparisons`, `comparison_sides`, `comparison_points`) vivono nello stesso DB di art-creator; artest le legge esclusivamente in sola lettura.
 
 La chiave OpenRouter **non deve mai essere inserita in `index.html`, in `src/` o in un commit**. Copiare `.env.example` in `.env.local` e impostare `OPENROUTER_API_KEY`; il server carica il file automaticamente all’avvio. La chiave serve solo al flusso legacy di generazione live (analisi/overview/opere simili on-demand) e ad art-creator: il viewer delle schede pubblicate funziona anche senza.
 

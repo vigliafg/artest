@@ -9,7 +9,9 @@ export const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 // Lettura (sola lettura, zero scritture) delle schede "ready" prodotte da art-creator.
 import {
   listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO,
-  getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO
+  getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO,
+  listReadySubjectsRO, getSubjectRO, getSubjectWorkImageRO,
+  listReadyComparisonsRO, getComparisonRO, getComparisonSideImageRO, getComparisonThumbRO
 } from './art-creator/db.mjs';
 
 function loadLocalEnv() {
@@ -402,6 +404,86 @@ function error(code, message, retryable = false) { return { error: { code, messa
 // ---------------------------------------------------------------------------
 // Libreria e schede pubblicate: lettura (read-only) del DB di art-creator.
 // ---------------------------------------------------------------------------
+function catalogSubject(s) {
+  return {
+    cardType: 'subject',
+    id: s.id,
+    title: s.name || 'Soggetto',
+    name: s.name || '',
+    shortDesc: s.shortDesc || '',
+    image: null,
+    fallbackImage: null,
+    period: 'Soggetto nella storia dell’arte',
+    featured: false
+  };
+}
+function catalogComparison(c) {
+  return {
+    cardType: 'comparison',
+    id: c.id,
+    title: c.title || 'Confronto',
+    comparisonType: c.comparisonType || 'same-subject',
+    hasThumb: Boolean(c.hasThumb),
+    image: c.hasThumb ? '/api/comparisons/' + c.id + '/thumb' : null,
+    fallbackImage: null,
+    period: 'Faccia a faccia',
+    featured: false
+  };
+}
+function dbSubjectPayload(id) {
+  const full = getSubjectRO(id);
+  if (!full) return null;
+  let symbols = [];
+  try { symbols = JSON.parse(full.symbols || '[]'); } catch (e) { symbols = []; }
+  return {
+    cardType: 'subject',
+    id: full.id,
+    name: full.name || '',
+    shortDesc: full.shortDesc || '',
+    intro: full.intro || '',
+    origins: full.origins || '',
+    symbols: Array.isArray(symbols) ? symbols : [],
+    interpretations: full.interpretations || '',
+    curiosities: full.curiosities || '',
+    chapters: (full.chapters || []).map(c => ({ era: c.era, text: c.text })),
+    works: (full.works || []).map(w => ({
+      id: w.id, title: w.title, artist: w.artist, date: w.date, museum: w.museum,
+      caption: w.caption,
+      imageUrl: w.hasImage ? '/api/subjects/' + full.id + '/works/' + w.id + '/image' : null,
+      sourceUrl: w.imagePage || w.imageUrl || null,
+      imageStatus: w.imageStatus
+    }))
+  };
+}
+function dbComparisonPayload(id) {
+  const full = getComparisonRO(id);
+  if (!full) return null;
+  return {
+    cardType: 'comparison',
+    id: full.id,
+    title: full.title || 'Confronto',
+    comparisonType: full.comparisonType || 'same-subject',
+    intro: full.intro || '',
+    technique: full.technique || '',
+    context: full.context || '',
+    critique: full.critique || '',
+    curiosities: full.curiosities || '',
+    hasThumb: Boolean(full.hasThumb),
+    thumbUrl: full.hasThumb ? '/api/comparisons/' + full.id + '/thumb' : null,
+    sides: (full.sides || []).map(s => {
+      const out = {
+        side: s.side, source: s.source, title: s.title || '', artist: s.artist || '',
+        date: s.date || '', museum: s.museum || '', imageStatus: s.imageStatus || 'missing',
+        imageUrl: null
+      };
+      if (s.source === 'library' && s.artworkId) out.imageUrl = '/api/artworks/' + s.artworkId + '/image';
+      else if (s.hasImage) out.imageUrl = '/api/comparisons/' + full.id + '/side/' + s.side + '/image';
+      else out.imageUrl = s.imageUrl || null;
+      return out;
+    }),
+    points: (full.points || []).map(p => ({ kind: p.kind, title: p.title, text: p.text }))
+  };
+}
 function catalogArtwork(a) {
   return {
     id: a.id,
@@ -498,9 +580,40 @@ export function createAppServer() { return createServer((req, res) => { if (req.
 
     // ---------- scheda pubblicata da art-creator (sola lettura dal DB SQLite) ----------
     if (req.method === 'GET' && req.url === '/api/library') {
-      let artworks = [];
+      let artworks = [], subjects = [], comparisons = [];
       try { artworks = listReadyArtworksRO().map(catalogArtwork); } catch (e) {}
-      return json(res, 200, { artworks, source: 'art-creator' });
+      try { subjects = listReadySubjectsRO().map(catalogSubject); } catch (e) {}
+      try { comparisons = listReadyComparisonsRO().map(catalogComparison); } catch (e) {}
+      return json(res, 200, { artworks, subjects, comparisons, source: 'art-creator' });
+    }
+    if (req.method === 'GET' && req.url && /^\/api\/subjects\/[^/]+$/.test(req.url)) {
+      let payload = null;
+      try { payload = dbSubjectPayload(decodeURIComponent(req.url.split('/')[3])); } catch (e) {}
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Soggetto non trovato: pubblica la scheda da art-creator'));
+      return json(res, 200, payload);
+    }
+    if (req.method === 'GET' && req.url && /^\/api\/subjects\/[^/]+\/works\/\d+\/image$/.test(req.url)) {
+      const parts = req.url.split('/');
+      let img = null;
+      try { img = getSubjectWorkImageRO(decodeURIComponent(parts[3]), Number(parts[5])); } catch (e) {}
+      return sendImage(res, img);
+    }
+    if (req.method === 'GET' && req.url && /^\/api\/comparisons\/[^/]+$/.test(req.url)) {
+      let payload = null;
+      try { payload = dbComparisonPayload(decodeURIComponent(req.url.split('/')[3])); } catch (e) {}
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Confronto non trovato: pubblica la scheda da art-creator'));
+      return json(res, 200, payload);
+    }
+    if (req.method === 'GET' && req.url && /^\/api\/comparisons\/[^/]+\/thumb$/.test(req.url)) {
+      let img = null;
+      try { img = getComparisonThumbRO(decodeURIComponent(req.url.split('/')[3])); } catch (e) {}
+      return sendImage(res, img);
+    }
+    if (req.method === 'GET' && req.url && /^\/api\/comparisons\/[^/]+\/side\/(a|b)\/image$/.test(req.url)) {
+      const parts = req.url.split('/');
+      let img = null;
+      try { img = getComparisonSideImageRO(decodeURIComponent(parts[3]), parts[5]); } catch (e) {}
+      return sendImage(res, img);
     }
     const artworkMatch = req.method === 'GET' && req.url && req.url.match(/^\/api\/artworks\/([^/]+)\/image-annotated$/);
     const imageMatch = req.method === 'GET' && req.url && req.url.match(/^\/api\/artworks\/([^/]+)\/image$/);
