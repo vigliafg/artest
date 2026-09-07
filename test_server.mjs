@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOverviewPrompt, buildSimilarPrompt, buildTextPrompt, callModel, callOpenRouter, callOpenRouterOverview, cleanModelJson, createAppServer, getOpenRouterApiKey, normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImage, VISION_MODEL, TEXT_MODEL } from './server.mjs';
 
-// Libreria pubblicata: accesso in sola lettura alle schede "ready" di art-creator.
-import { DB_PATH, listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO, getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO } from './art-creator/db.mjs';
+// Libreria pubblicata: accesso in sola lettura alle schede "ready" di artest-creator.
+import { DB_PATH, listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO, getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO } from './artest-creator/db.mjs';
 
 const input = {
   artwork: { title: 'Annunciazione', artist: 'Beato Angelico', period: 'Rinascimento fiorentino' },
@@ -261,8 +261,8 @@ test('read-only DB accessors read a published artwork without writing', async ()
   const copy = join(dir, 'copy.db');
   try {
     await copyFile(DB_PATH, copy);
-    const previous = process.env.ART_CREATOR_DB;
-    process.env.ART_CREATOR_DB = copy;
+    const previous = process.env.ARTEST_CREATOR_DB;
+    process.env.ARTEST_CREATOR_DB = copy;
     // NB: DB_PATH è già stato risolto all'import; per isolare davvero il test
     // apriamo la copia riusando le stesse funzioni (connessione read-only sul file).
     const works = listReadyArtworksRO();
@@ -282,7 +282,7 @@ test('read-only DB accessors read a published artwork without writing', async ()
       assert.equal(listSourcesRO(id).length >= 0, true);
       assert.equal(listSimilarWorksRO(id).length >= 0, true);
     }
-    if (previous === undefined) delete process.env.ART_CREATOR_DB; else process.env.ART_CREATOR_DB = previous;
+    if (previous === undefined) delete process.env.ARTEST_CREATOR_DB; else process.env.ARTEST_CREATOR_DB = previous;
   } finally {
     await import('node:fs/promises').then(fs => fs.rm(dir, { recursive: true, force: true }));
   }
@@ -321,15 +321,15 @@ test('normalizeAnalysis surfaces web citations as sources', () => {
   assert.equal(result.sources.length, 2);
 });
 
-import { buildSubjectIntroPrompt, normalizeSubjectOutline, normalizeSubjectChapters, normalizeSubjectClosing, buildSubjectWorksPrompt, buildSubjectChaptersPrompt, buildComparisonIntroPrompt, buildComparisonPointsPrompt, buildComparisonAnalysisPrompt, normalizeComparisonIntro, normalizeComparisonPoints, normalizeComparisonAnalysis } from './art-creator/server.mjs';
+import { buildSubjectIntroPrompt, normalizeSubjectOutline, normalizeSubjectChapters, normalizeSubjectClosing, buildSubjectWorksPrompt, buildSubjectChaptersPrompt, buildComparisonIntroPrompt, buildComparisonPointsPrompt, buildComparisonAnalysisPrompt, normalizeComparisonIntro, normalizeComparisonPoints, normalizeComparisonAnalysis } from './artest-creator/server.mjs';
 
 test('new schemas (subjects + comparisons) CRUD and RO roundtrip', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'artest-schemas-'));
   const dbPath = join(dir, 'test.db');
-  const previous = process.env.ART_CREATOR_DB;
-  process.env.ART_CREATOR_DB = dbPath;
+  const previous = process.env.ARTEST_CREATOR_DB;
+  process.env.ARTEST_CREATOR_DB = dbPath;
   try {
-    const mod = await import('./art-creator/db.mjs?t=' + Date.now());
+    const mod = await import('./artest-creator/db.mjs?t=' + Date.now());
     mod.initSchema();
     const s = mod.createSubject({ id: 'nativita', name: 'Natività' });
     assert.equal(s.status, 'draft');
@@ -367,7 +367,7 @@ test('new schemas (subjects + comparisons) CRUD and RO roundtrip', async () => {
     mod.deleteSubject('nativita');
     assert.equal(mod.getSubjectRO('nativita'), null);
   } finally {
-    if (previous === undefined) delete process.env.ART_CREATOR_DB; else process.env.ART_CREATOR_DB = previous;
+    if (previous === undefined) delete process.env.ARTEST_CREATOR_DB; else process.env.ARTEST_CREATOR_DB = previous;
     await import('node:fs/promises').then(fs => fs.rm(dir, { recursive: true, force: true }));
   }
 });

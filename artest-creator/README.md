@@ -1,4 +1,4 @@
-# art-creator · app sorella di artest
+# artest-creator · app sorella di artest
 
 Applicazione di **authoring dei contenuti didattici**: carichi l'immagine di un
 dipinto e l'LLM propone l'intera scheda (opera, artista, dettagli notevoli e
@@ -9,7 +9,7 @@ un clic. La sorella **artest** resta l'app di lettura/esplorazione.
 
 - **Zero dipendenze**: Node ≥ 22.5, solo moduli nativi (`node:http`,
   `node:sqlite`). Nessun `npm install`.
-- **Database**: SQLite singolo file (`data/art-creator.db`, modalità WAL),
+- **Database**: SQLite singolo file (`data/artest-creator.db`, modalità WAL),
   schema normalizzato: `artworks` → `details` (hotspot con regioni 0–1) →
   `detail_content` (7 campi per dettaglio × tab `studio`/`approfondimento`),
   più `overview` (testo opera + artista), `sources` e `similar_works` (10
@@ -30,8 +30,8 @@ un clic. La sorella **artest** resta l'app di lettura/esplorazione.
 ## Avvio
 
 ```bash
-cd art-creator
-node server.mjs            # http://127.0.0.1:8100  (porta: ART_CREATOR_PORT)
+cd artest-creator
+node server.mjs            # http://127.0.0.1:8100  (porta: ARTEST_CREATOR_PORT)
 ```
 
 DB e cartella `uploads/` si creano da soli al primo avvio; sono ignorati da git

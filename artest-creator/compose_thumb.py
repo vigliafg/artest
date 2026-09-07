@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# art-creator — compose_thumb.py
+# artest-creator — compose_thumb.py
 # Crea la miniatura composita per la scheda "Faccia a faccia":
 # metà sinistra dell'opera A + metà destra dell'opera B, affiancate.
 # Uso: python3 compose_thumb.py <immagine_a> <immagine_b> <output.jpg>

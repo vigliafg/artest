@@ -1,4 +1,4 @@
-// Presenta la scheda didattica salvata nel database (art-creator): le sezioni
+// Presenta la scheda didattica salvata nel database (artest-creator): le sezioni
 // vengono lette dal contenuto pubblicato, senza chiamate live al modello.
 // I due livelli (Scuola secondaria / Approfondimento) mostrano solo le proprie sezioni.
 
@@ -54,8 +54,8 @@ function ExplorePage({ artwork, onBack }) {
         content: content,
         sources: (artwork.sources || []).filter(function (s) { return s && s.url; }),
         disclaimer: level === 'Approfondimento'
-          ? 'Testi della scheda didattica (art-creator): confronti, questioni aperte e tecnica pittorica specifici di questo dettaglio, verificati in fase di pubblicazione.'
-          : 'Testi della scheda didattica (art-creator): cosa vedi, cosa significa e il legame con gli altri dettagli dell’opera, verificati in fase di pubblicazione.'
+          ? 'Testi della scheda didattica (artest-creator): confronti, questioni aperte e tecnica pittorica specifici di questo dettaglio, verificati in fase di pubblicazione.'
+          : 'Testi della scheda didattica (artest-creator): cosa vedi, cosa significa e il legame con gli altri dettagli dell’opera, verificati in fase di pubblicazione.'
       };
     });
     return levels;
@@ -75,7 +75,7 @@ function ExplorePage({ artwork, onBack }) {
     }
   }
 
-  // La didascalia attiva funziona come toggle (come in art-creator): ripremendola
+  // La didascalia attiva funziona come toggle (come in artest-creator): ripremendola
   // si torna all'immagine completa a colori, senza box e senza selezione.
   function chooseHotspot(hotspot) {
     if (selected && String(selected.id) === String(hotspot.id)) {

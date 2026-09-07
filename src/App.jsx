@@ -40,7 +40,7 @@ function App() {
   const [openingId, setOpeningId] = React.useState(null);
   const [openError, setOpenError] = React.useState(null);
 
-  // La collezione arriva dal DB di art-creator: dipinti, soggetti e confronti
+  // La collezione arriva dal DB di artest-creator: dipinti, soggetti e confronti
   // pubblicati (stato "ready"). Se non ci sono schede (o il DB non è raggiungibile)
   // si usa la demo inclusa nella pagina (solo dipinti).
   React.useEffect(() => {

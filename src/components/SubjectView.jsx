@@ -1,4 +1,4 @@
-// Scheda "Soggetto nella storia dell'arte" letta dal DB (art-creator).
+// Scheda "Soggetto nella storia dell'arte" letta dal DB (artest-creator).
 // Sezioni: introduzione/origini, timeline dei capitoli, galleria opere, simboli,
 // interpretazioni, curiosità — con comandi A+/A− come nel resto dell'app.
 
@@ -71,10 +71,10 @@ function SubjectView({ subject, onBack }) {
               ) : null}
             </div>
             <div className="overview-foot"><span className="overview-count">{countWords(subject.intro) + countWords(subject.origins)} parole</span></div>
-            <p className="overview-disclaimer">Scheda didattica generata con intelligenza artificiale (art-creator) e verificata in fase di pubblicazione.</p>
+            <p className="overview-disclaimer">Scheda didattica generata con intelligenza artificiale (artest-creator) e verificata in fase di pubblicazione.</p>
           </div>
         ) : (
-          <div className="overview-card overview-error"><Icon name="info" size={22} /><h3>Contenuti non ancora generati</h3><p>Pubblica la scheda del soggetto da art-creator per vedere qui l’evoluzione del soggetto.</p></div>
+          <div className="overview-card overview-error"><Icon name="info" size={22} /><h3>Contenuti non ancora generati</h3><p>Pubblica la scheda del soggetto da artest-creator per vedere qui l’evoluzione del soggetto.</p></div>
         )}
       </section>
 

@@ -16,13 +16,13 @@ node server.mjs
 
 The preview URL is `http://127.0.0.1:8000`.
 
-## art-creator (app sorella · authoring contenuti)
+## artest-creator (app sorella · authoring contenuti)
 
 Server separato, zero dipendenze, richiede Node ≥ 22.5 (modulo nativo `node:sqlite`).
 
 ```bash
-cd art-creator
-node server.mjs            # http://127.0.0.1:8100  (porta: ART_CREATOR_PORT)
+cd artest-creator
+node server.mjs            # http://127.0.0.1:8100  (porta: ARTEST_CREATOR_PORT)
 ```
 
-La chiave `OPENROUTER_API_KEY` arriva da `.env.local`/`.env` alla radice del repo (loader condiviso con artest). Il DB SQLite si crea da solo in `art-creator/data/art-creator.db`; le immagini caricate finiscono in `art-creator/uploads/`.
+La chiave `OPENROUTER_API_KEY` arriva da `.env.local`/`.env` alla radice del repo (loader condiviso con artest). Il DB SQLite si crea da solo in `artest-creator/data/artest-creator.db`; le immagini caricate finiscono in `artest-creator/uploads/`.

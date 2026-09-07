@@ -1,4 +1,4 @@
-// art-creator — server HTTP (zero dipendenze) + API CRUD + generazione LLM
+// artest-creator — server HTTP (zero dipendenze) + API CRUD + generazione LLM
 import { createServer } from 'node:http';
 import { readFile, writeFile, stat, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -26,7 +26,7 @@ import { callModel, VISION_MODEL, TEXT_MODEL, getOpenRouterApiKey,
   normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImages } from '../server.mjs';
 
 const execFileAsync = promisify(execFile);
-const PORT = Number(process.env.ART_CREATOR_PORT || 8100);
+const PORT = Number(process.env.ARTEST_CREATOR_PORT || 8100);
 const HOST = process.env.APP_HOST || '127.0.0.1';
 const PUBLIC_DIR = join(APP_ROOT, 'public');
 
@@ -267,7 +267,7 @@ function handleApi(req, res, urlPath) {
       };
       const raw = await callModel(TEXT_MODEL, [{ type: 'text', text: buildOverviewPrompt(input) }], apiKey);
       const normalized = normalizeOverview(raw.data, input, raw.citations);
-      saveOverview(artwork.id, normalized.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-1' });
+      saveOverview(artwork.id, normalized.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'artest-creator-1' });
       const overview = getOverview(artwork.id);
       json(res, 200, { overview });
     }).catch(e => { console.error('ERR overview:', e); err(res, 500, e.message); });
@@ -375,7 +375,7 @@ function handleApi(req, res, urlPath) {
       const runTab = async (tab, sharedVisionData) => {
         const level = tab === 'approfondimento' ? 'Approfondimento' : 'Scuola secondaria';
         const result = await analyzeDetail({ artwork, detail, selectionImage: input.selectionImage || null, fullImage, level, apiKey, sharedVisionData });
-        saveDetailContent(detailId, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-3' });
+        saveDetailContent(detailId, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'artest-creator-3' });
         return getDetailContent(detailId, tab);
       };
       if (mode === 'both') {
@@ -443,7 +443,7 @@ function handleApi(req, res, urlPath) {
       const runTab = async (tab) => {
         const level = tab === 'approfondimento' ? 'Approfondimento' : 'Scuola secondaria';
         const result = await analyzeDetail({ artwork, detail, selectionImage: input.selectionImage || null, fullImage, level, apiKey, sharedVisionData: vision });
-        saveDetailContent(detail.id, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'art-creator-4-manuale' });
+        saveDetailContent(detail.id, tab, result.content, { status: 'generated', model: TEXT_MODEL, promptVersion: 'artest-creator-4-manuale' });
         return getDetailContent(detail.id, tab);
       };
       const [studioRow, approfondimentoRow] = await Promise.all([runTab('studio'), runTab('approfondimento')]);
@@ -1176,7 +1176,7 @@ const server = createServer((req, res) => {
   if (urlPath === '/api/status') {
     const full = listArtworks().length;
     return json(res, 200, {
-      app: 'art-creator',
+      app: 'artest-creator',
       configured: Boolean(getOpenRouterApiKey()),
       visionModel: VISION_MODEL,
       textModel: TEXT_MODEL,
@@ -1202,7 +1202,7 @@ const server = createServer((req, res) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, HOST, () => {
-    console.log(`art-creator: http://${HOST}:${PORT}`);
+    console.log(`artest-creator: http://${HOST}:${PORT}`);
     console.log(`DB: SQLite (node:sqlite)`);
     console.log(`Modello visione: ${VISION_MODEL}`);
     console.log(`Modello testo: ${TEXT_MODEL}`);

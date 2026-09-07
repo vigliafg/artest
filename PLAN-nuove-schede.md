@@ -1,10 +1,10 @@
-# PIANO — Due nuovi tipi di scheda in art-creator (+ viewer artest)
+# PIANO — Due nuovi tipi di scheda in artest-creator (+ viewer artest)
 
 *Documento di pianificazione. Stato: **approvato, in implementazione** · 07/09/2026*
 
 ## 1. Contesto
 
-art-creator oggi crea un solo tipo di scheda: il **singolo dipinto** (metadati + presentazione a 2 sezioni + N dettagli ciascuno con 2 tab × 4–5 sezioni + 10 opere simili con immagini, salvato in SQLite come `ready`). Il viewer **artest** legge in sola lettura le schede `ready` e le presenta in libreria e in una vista esplorativa.
+artest-creator oggi crea un solo tipo di scheda: il **singolo dipinto** (metadati + presentazione a 2 sezioni + N dettagli ciascuno con 2 tab × 4–5 sezioni + 10 opere simili con immagini, salvato in SQLite come `ready`). Il viewer **artest** legge in sola lettura le schede `ready` e le presenta in libreria e in una vista esplorativa.
 
 Si aggiungono due nuovi tipi di scheda:
 
@@ -15,7 +15,7 @@ Si aggiungono due nuovi tipi di scheda:
 
 ## 2. Decisioni confermate
 
-1. **Faccia a faccia**: i due lati possono essere opere dal DB di art-creator **oppure** esterne (URL Wikimedia / upload) → ogni lato ha `source = library | external`.
+1. **Faccia a faccia**: i due lati possono essere opere dal DB di artest-creator **oppure** esterne (URL Wikimedia / upload) → ogni lato ha `source = library | external`.
 2. **Soggetto**: le opere rappresentative dell'evoluzione hanno **immagini scaricate** (meccanismo collaudato di `similar_works`).
 3. **Viewer artest**: integrazione **completa** (libreria con i 3 tipi di miniatura + viste dedicate).
 4. **Confronto**: le voci "Punti in comune / Differenze" sono **solo testuali** (nessun riferimento agli hotspot).
@@ -99,7 +99,7 @@ CREATE TABLE comparison_points (             -- Sez.3-4 Punti in comune / Differ
 
 **Miniatura composita** (metà sinistra di A + metà destra di B): generata via PIL alla **approvazione** (nuovo script `compose_thumb.py`, pattern di `annotate.py`) e salvata in `comparisons.thumb_data`; il viewer la serve come BLOB.
 
-## 5. API art-creator (rotte nuove in `art-creator/server.mjs`)
+## 5. API artest-creator (rotte nuove in `artest-creator/server.mjs`)
 
 **Subjects**
 - `POST /api/subjects {name}` → crea draft (slug id)
@@ -151,7 +151,7 @@ Input: due opere (A e B) + tipo. Esempio: *Fra Angelico vs Leonardo (stesso sogg
 
 **Miniatura in home**: composita (metà A + metà B) generata dal server.
 
-## 8. UI art-creator (`public/index.html`)
+## 8. UI artest-creator (`public/index.html`)
 
 - **Home**: tre sezioni/filtri — card dipinto (miniatura), card soggetto (testuale col nome), card faccia a faccia (composita); bottoni "+ Nuova opera", "+ Nuovo soggetto", "+ Nuovo confronto"; badge di stato come oggi.
 - **SubjectStudio**: inserisci nome → pipeline sequenziale con barra progresso e feedback per step (outline → capitoli → opere → chiusura) → editor per sezione (capitoli e opere come righe editabili, pattern `sim-grid`) → "💾 Salva nel database" → `ready`.
@@ -160,21 +160,21 @@ Input: due opere (A e B) + tipo. Esempio: *Fra Angelico vs Leonardo (stesso sogg
 
 ## 9. Viewer artest (integrazione completa)
 
-- **`server.mjs` (artest)**: `/api/library` → `[{cardType:'artwork'|'subject'|'comparison', ...}]` (artwork = miniatura attuale; subject = nome testuale; comparison = `thumbUrl`). Nuove rotte read-only: `GET /api/subjects/:id`, `GET /api/comparisons/:id`, `GET /api/comparisons/:id/thumb`, `GET /api/comparisons/:id/side/:s/image`. Nuovi accessor RO in `art-creator/db.mjs` (pattern `openReadonly`, nessuna scrittura).
+- **`server.mjs` (artest)**: `/api/library` → `[{cardType:'artwork'|'subject'|'comparison', ...}]` (artwork = miniatura attuale; subject = nome testuale; comparison = `thumbUrl`). Nuove rotte read-only: `GET /api/subjects/:id`, `GET /api/comparisons/:id`, `GET /api/comparisons/:id/thumb`, `GET /api/comparisons/:id/side/:s/image`. Nuovi accessor RO in `artest-creator/db.mjs` (pattern `openReadonly`, nessuna scrittura).
 - **React**: `SubjectView.jsx` (intro/origini, **timeline verticale** dei capitoli, galleria opere con BLOB, elenco simboli, interpretazioni, curiosità, comandi A+/A− come oggi) e `ComparisonView.jsx` (intro, due schede affiancate con immagini, elenchi "Punti in comune"/"Differenze" distinti, tecnica, contesto, critica, curiosità).
 - **`CatalogPage.jsx` / `App.jsx`**: gestione dei 3 tipi di card in griglia e hero; routing per le nuove viste.
 
 ## 10. Test e verifica
 
 - Unit test nuovi su CRUD/accessor (db.mjs) e integrazione rotte (test_server.mjs); suite esistente resta verde (27/27+).
-- Verifica live step-by-step: soggetto reale **"Annunciazione"** (pipeline → ready, capitoli e opere con immagini) e confronto reale **Fra Angelico vs Leonardo** (lato library + lato URL) → preview art-creator 8100 e artest 8000, console pulita.
+- Verifica live step-by-step: soggetto reale **"Annunciazione"** (pipeline → ready, capitoli e opere con immagini) e confronto reale **Fra Angelico vs Leonardo** (lato library + lato URL) → preview artest-creator 8100 e artest 8000, console pulita.
 - Aggiornamento `README.md` e run doc; **commit e push** a fine lavoro.
 
 ## 11. Ordine di esecuzione
 
 1. **Fase A — DB**: 6 tabelle + CRUD/approve + accessor RO → test
 2. **Fase B — API**: rotte subjects + comparisons (incl. `compose_thumb.py`) → test di integrazione
-3. **Fase C — UI art-creator**: home a 3 tipi, SubjectStudio, ComparisonStudio → E2E su 8100
+3. **Fase C — UI artest-creator**: home a 3 tipi, SubjectStudio, ComparisonStudio → E2E su 8100
 4. **Fase D — Viewer artest**: library multi-tipo, rotte read-only, SubjectView/ComparisonView → E2E su 8000
 5. **Fase E — Rifiniture**: README, run doc, suite completa, commit + push
 

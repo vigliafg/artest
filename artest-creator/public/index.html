@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>art-creator · crea le schede didattiche</title>
+<title>artest-creator · crea le schede didattiche</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
@@ -336,7 +336,7 @@ function render() {
   if (state.view === 'comparison-viewer') return renderComparisonViewer();
 }
 function topbar(title, rightHtml) {
-  return '<header class="topbar"><a class="brand" href="#" data-nav="home"><span class="brand-mark"><i></i><i></i><i></i></span>art-creator</a>' +
+  return '<header class="topbar"><a class="brand" href="#" data-nav="home"><span class="brand-mark"><i></i><i></i><i></i></span>artest-creator</a>' +
     '<div class="right"><span class="eyebrow">' + esc(title || '') + '</span>' + (rightHtml || '') + '</div></header>';
 }
 
@@ -1944,7 +1944,7 @@ function renderViewerDetail(d) {
   html += '<div class="sources" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">';
   (state.viewerSources || []).forEach(function (s) {});
   html += '</div>';
-  html += '<p class="muted-note">Contenuto generato con l’intelligenza artificiale e salvato nel database di art-creator. Verifica i dati con le fonti prima dell’uso didattico.</p>';
+  html += '<p class="muted-note">Contenuto generato con l’intelligenza artificiale e salvato nel database di artest-creator. Verifica i dati con le fonti prima dell’uso didattico.</p>';
   return html;
 }
 function bindViewer(full) {

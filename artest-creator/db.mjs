@@ -1,4 +1,4 @@
-// art-creator — storage layer (SQLite nativo node:sqlite, zero dipendenze)
+// artest-creator — storage layer (SQLite nativo node:sqlite, zero dipendenze)
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -10,9 +10,9 @@ export const UPLOAD_DIR = join(ROOT, 'uploads');
 mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(UPLOAD_DIR, { recursive: true });
 
-export const DB_PATH = process.env.ART_CREATOR_DB || join(DATA_DIR, 'art-creator.db');
+export const DB_PATH = process.env.ARTEST_CREATOR_DB || join(DATA_DIR, 'artest-creator.db');
 
-// Connessione di SCRITTURA (art-creator server): inizializzata in modo lazy da initSchema().
+// Connessione di SCRITTURA (artest-creator server): inizializzata in modo lazy da initSchema().
 // Quando il modulo è importato da artest (server di sola lettura), il DB non viene aperto in scrittura
 // e lo schema non viene toccato: artest usa le funzioni *RO qui sotto (connessione read-only per query).
 let _db = null;
@@ -749,7 +749,7 @@ export function publishArtwork(id) {
 
 // ---------------------------------------------------------------------------
 // Accesso di SOLA LETTURA per artest (viewer): apre una connessione read-only
-// al DB di art-creator senza MAI scrivere o toccare lo schema. Ogni chiamata
+// al DB di artest-creator senza MAI scrivere o toccare lo schema. Ogni chiamata
 // apre/chiude la connessione: nessun lock persistente verso il server autore.
 // ---------------------------------------------------------------------------
 function openReadonly() {

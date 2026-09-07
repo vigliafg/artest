@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# art-creator — annotate.py
+# artest-creator — annotate.py
 # Disegna sopra l'immagine pulita i riquadri e le didascalie dei dettagli notevoli.
 # Uso: python3 annotate.py <immagine> <dettagli.json> <output.jpg>
 #   dettagli.json: [{ "title": "...", "category": "...", "region": {"x","y","width","height"} }]  (coordinate 0..1)

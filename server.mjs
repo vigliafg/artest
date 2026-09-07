@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
-// Lettura (sola lettura, zero scritture) delle schede "ready" prodotte da art-creator.
+// Lettura (sola lettura, zero scritture) delle schede "ready" prodotte da artest-creator.
 import {
   listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO,
   getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO,
   listReadySubjectsRO, getSubjectRO, getSubjectWorkImageRO,
   listReadyComparisonsRO, getComparisonRO, getComparisonSideImageRO, getComparisonThumbRO
-} from './art-creator/db.mjs';
+} from './artest-creator/db.mjs';
 
 function loadLocalEnv() {
   for (const filename of ['.env.local', '.env']) {
@@ -342,7 +342,7 @@ Non inventare nulla: fonda il testo su ciò che è osservabile e su fatti di cui
 
 // Rate limit globale: i modelli contributor di OpenRouter hanno 30 richieste/min.
 // Tutte le chiamate passano da qui -> semaforo a finestra scorrevole (default 26/min, sotto la soglia).
-// Consente di parallelizzare in sicurezza la generazione (art-creator) senza incappare nel 429.
+// Consente di parallelizzare in sicurezza la generazione (artest-creator) senza incappare nel 429.
 const OPENROUTER_RPM = Math.max(1, Number(process.env.OPENROUTER_RPM || 26));
 const callTimestamps = [];
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -402,7 +402,7 @@ function json(res, status, payload) { const data = Buffer.from(JSON.stringify(pa
 function error(code, message, retryable = false) { return { error: { code, message, retryable } }; }
 
 // ---------------------------------------------------------------------------
-// Libreria e schede pubblicate: lettura (read-only) del DB di art-creator.
+// Libreria e schede pubblicate: lettura (read-only) del DB di artest-creator.
 // ---------------------------------------------------------------------------
 function catalogSubject(s) {
   return {
@@ -547,7 +547,7 @@ function dbArtworkPayload(id) {
     annotatedImageUrl: images.annotated ? '/api/artworks/' + id + '/image-annotated' : null,
     description: (overviewRow && overviewRow.painting ? overviewRow.painting.slice(0, 300) : '') || (ready.title ? 'Esplora «' + ready.title + '» dettaglio per dettaglio.' : ''),
     alt: ready.title ? (ready.artist ? ready.artist + ', ' : '') + ready.title : 'Opera d’arte',
-    rights: 'Scheda didattica generata con intelligenza artificiale (art-creator). Immagine per uso didattico; verifica i diritti prima di un uso pubblico.',
+    rights: 'Scheda didattica generata con intelligenza artificiale (artest-creator). Immagine per uso didattico; verifica i diritti prima di un uso pubblico.',
     featured: true,
     levels: ['Scuola secondaria', 'Approfondimento'],
     hotspots,
@@ -578,18 +578,18 @@ function sendImage(res, img) {
 async function serveStatic(req, res) { const requestPath = req.url === '/' ? '/index.html' : new URL(req.url, 'http://localhost').pathname; const filePath = resolve(ROOT, `.${normalize(requestPath)}`); if (!filePath.startsWith(ROOT)) return (res.writeHead(403), res.end('Forbidden')); try { const info = await stat(filePath); if (!info.isFile()) throw new Error(); const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.jsx': 'text/javascript; charset=utf-8', '.jpg': 'image/jpeg' }; res.writeHead(200, { 'Content-Type': types[extname(filePath)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(await readFile(filePath)); } catch { res.writeHead(404); res.end('Not Found'); } }
 export function createAppServer() { return createServer((req, res) => { if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }); res.end(); return; }
 
-    // ---------- scheda pubblicata da art-creator (sola lettura dal DB SQLite) ----------
+    // ---------- scheda pubblicata da artest-creator (sola lettura dal DB SQLite) ----------
     if (req.method === 'GET' && req.url === '/api/library') {
       let artworks = [], subjects = [], comparisons = [];
       try { artworks = listReadyArtworksRO().map(catalogArtwork); } catch (e) {}
       try { subjects = listReadySubjectsRO().map(catalogSubject); } catch (e) {}
       try { comparisons = listReadyComparisonsRO().map(catalogComparison); } catch (e) {}
-      return json(res, 200, { artworks, subjects, comparisons, source: 'art-creator' });
+      return json(res, 200, { artworks, subjects, comparisons, source: 'artest-creator' });
     }
     if (req.method === 'GET' && req.url && /^\/api\/subjects\/[^/]+$/.test(req.url)) {
       let payload = null;
       try { payload = dbSubjectPayload(decodeURIComponent(req.url.split('/')[3])); } catch (e) {}
-      if (!payload) return json(res, 404, error('NOT_FOUND', 'Soggetto non trovato: pubblica la scheda da art-creator'));
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Soggetto non trovato: pubblica la scheda da artest-creator'));
       return json(res, 200, payload);
     }
     if (req.method === 'GET' && req.url && /^\/api\/subjects\/[^/]+\/works\/\d+\/image$/.test(req.url)) {
@@ -601,7 +601,7 @@ export function createAppServer() { return createServer((req, res) => { if (req.
     if (req.method === 'GET' && req.url && /^\/api\/comparisons\/[^/]+$/.test(req.url)) {
       let payload = null;
       try { payload = dbComparisonPayload(decodeURIComponent(req.url.split('/')[3])); } catch (e) {}
-      if (!payload) return json(res, 404, error('NOT_FOUND', 'Confronto non trovato: pubblica la scheda da art-creator'));
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Confronto non trovato: pubblica la scheda da artest-creator'));
       return json(res, 200, payload);
     }
     if (req.method === 'GET' && req.url && /^\/api\/comparisons\/[^/]+\/thumb$/.test(req.url)) {
@@ -622,7 +622,7 @@ export function createAppServer() { return createServer((req, res) => { if (req.
       const id = decodeURIComponent(req.url.split('/')[3]);
       let payload = null;
       try { payload = dbArtworkPayload(id); } catch (e) {}
-      if (!payload) return json(res, 404, error('NOT_FOUND', 'Scheda non trovata: pubblica l’opera da art-creator'));
+      if (!payload) return json(res, 404, error('NOT_FOUND', 'Scheda non trovata: pubblica l’opera da artest-creator'));
       return json(res, 200, payload);
     }
     if (similarMatch) {
