@@ -233,9 +233,14 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .tl-item h4{margin:0 0 4px;font-family:'Playfair Display',serif;font-size:17px;color:var(--ink)}
 .tl-item p{margin:0;color:var(--ink);font-size:12px;line-height:1.65}
 .symbol-list{display:flex;flex-direction:column;gap:8px}
-.symbol-list .sym-item{border-left:3px solid var(--mustard);padding:6px 12px;background:var(--white);border-radius:0 8px 8px 0}
+.sym-item{border-left:3px solid var(--mustard);padding:10px 12px;background:var(--white);border-radius:0 8px 8px 0}
+.symbol-list .sym-item{border-left-color:var(--mustard);padding:6px 12px;background:var(--white);border-radius:0 8px 8px 0}
 .symbol-list .sym-item strong{font-size:12px}
 .symbol-list .sym-item span{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:2px}
+.cmp-point-list .cmp-point{border-left:3px solid var(--green);padding:10px 12px;background:var(--white);border-radius:0 8px 8px 0;margin-bottom:8px}
+.cmp-point-list .cmp-point.different{border-left-color:var(--coral)}
+.cmp-point-list .cmp-point strong{display:block;font-family:'DM Sans',Arial,sans-serif;font-size:12px;font-weight:700;line-height:1.35;color:var(--ink);margin:0 0 6px}
+.cmp-point-list .cmp-point span{display:block;font-family:'DM Sans',Arial,sans-serif;color:var(--ink);font-size:12px;line-height:1.65;margin:0}
 .cmp-side-card{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .cmp-side-card .side-half{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--white)}
 .cmp-side-card .side-half img{width:100%;height:200px;object-fit:cover;display:block;background:#eeeae3}
@@ -2655,12 +2660,12 @@ function renderComparisonViewer() {
     var different = (full.points || []).filter(function (p) { return p.kind === 'different'; });
     if (similar.length) {
       h += '<div class="card" style="margin:18px 0"><div class="step-head"><span class="eyebrow" style="color:var(--green)">Punti in comune</span></div>';
-      similar.forEach(function (p) { h += '<div class="sym-item" style="border-left-color:var(--green);margin-bottom:8px"><strong>' + esc(p.title) + '</strong><span>' + esc(p.text) + '</span></div>'; });
+      similar.forEach(function (p) { h += '<div class="cmp-point-list"><div class="cmp-point"><strong>' + esc(p.title) + '</strong><span>' + esc(p.text) + '</span></div></div>'; });
       h += '</div>';
     }
     if (different.length) {
       h += '<div class="card" style="margin:18px 0"><div class="step-head"><span class="eyebrow">Differenze</span></div>';
-      different.forEach(function (p) { h += '<div class="sym-item" style="margin-bottom:8px"><strong>' + esc(p.title) + '</strong><span>' + esc(p.text) + '</span></div>'; });
+      different.forEach(function (p) { h += '<div class="cmp-point-list"><div class="cmp-point different"><strong>' + esc(p.title) + '</strong><span>' + esc(p.text) + '</span></div></div>'; });
       h += '</div>';
     }
     h += '<div class="card" style="margin:18px 0"><div class="ov-grid">' +
