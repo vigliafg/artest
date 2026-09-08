@@ -2241,7 +2241,17 @@ function subGenAll() {
   function next() {
     if (i >= steps.length) { s.genBusy = false; paint(); toast('Generazione completata — rivedi e premi Salva nel database', true); return; }
     post('/api/subjects/' + s.id + '/generate/' + steps[i]).then(function () {
-      i++; paint(); next();
+      i++;
+      return api('/api/subjects/' + s.id);
+    }).then(function (full) {
+      // Ricarica ogni step completato prima di proseguire: evita che il Salva
+      // finale sovrascriva i contenuti generati con lo stato UI precedente.
+      applySubjectFull(full);
+      paint();
+      render();
+      wrap = document.getElementById('subPipeWrap');
+      paint();
+      next();
     }).catch(function (e) {
       s.genBusy = false;
       if (wrap) wrap.innerHTML = '<div class="card pipe-card err"><div class="pipe-head"><span class="eyebrow">generazione automatica</span><span class="pipe-pct">' + Math.round(100 * i / steps.length) + '%</span></div><div class="pipe-err">' + esc(e.message || 'Generazione interrotta') + '</div><div class="pipe-actions"><button class="btn small" data-subretry="1">⟳ Riprova</button></div></div>';
@@ -2259,7 +2269,7 @@ function saveSubjectCard() {
     name: s.name, shortDesc: s.shortDesc, intro: s.intro, origins: s.origins,
     symbols: JSON.stringify(s.symbols), interpretations: s.interpretations, curiosities: s.curiosities,
     chapters: s.chapters,
-    works: s.works.map(function (w) { return { title: w.title, artist: w.artist, date: w.date, museum: w.museum, caption: w.caption }; })
+    works: s.works.map(function (w) { return { id: w.id, title: w.title, artist: w.artist, date: w.date, museum: w.museum, caption: w.caption }; })
   }).then(function () {
     return post('/api/subjects/' + s.id + '/approve');
   }).then(function (body) {
