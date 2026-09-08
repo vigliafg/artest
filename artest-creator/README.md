@@ -107,6 +107,7 @@ disponibili come fallback).
 | POST | `/api/artworks/:id/annotate` | (ri)genera l'immagine annotata da sola |
 | POST | `/api/artworks/:id/approve` · `/publish` | approva (`ready`, annota) / esporta JSON |
 | GET | `/api/artworks/:id/image` · `/image-annotated` | BLOB binari dal DB |
+| GET | `/api/artworks/:id/pdf` · `/api/subjects/:id/pdf` · `/api/comparisons/:id/pdf` | **PDF "libro d'arte" della scheda** (vedi sotto) |
 | DELETE | `/api/artworks/:id` | elimina opera + contenuti (cascade) |
 
 `POST /publish` restituisce il JSON pronto da consumare in artest, con
@@ -153,6 +154,39 @@ resolver, hotlink).
 fallback automatico al font di default di PIL). Se assente, il salvataggio
 funziona comunque ma segnala `annotatedWarning`; si può rigenerare l'immagine
 annotata in seguito con `POST /api/artworks/:id/annotate`.
+
+## Esportazione PDF "libro d'arte" (`make_pdf.py`)
+
+Ogni tipo di scheda si esporta come PDF impaginato stile libro d'arte
+(pagina A4, carta avorio, doppio filetto oro in copertina, corpo in
+DejaVu Serif giustificato, capitoli numerati in romano con etichetta
+occhiello), scaricabile dal bottone **⬇ PDF** nella topbar dei tre viewer
+(opera, soggetto, faccia a faccia):
+
+| Endpoint | Contenuto del PDF |
+|---|---|
+| `GET /api/artworks/:id/pdf` | copertina → Presentazione (Il dipinto / L'artista) → tavola dell'opera a pagina intera → un capitolo per dettaglio (crop + Cosa vedi / Cosa significa / In relazione all'opera / Guarda ancora + Una curiosità / Confronti / Questioni aperte / Tecnica e materia) → galleria Opere simili → Fonti |
+| `GET /api/subjects/:id/pdf` | copertina → Introduzione → Origini e fonti iconografiche → L'evoluzione per epoche → Opere rappresentative → Attributi e simboli → Interpretazioni e varianti → Curiosità e questioni aperte |
+| `GET /api/comparisons/:id/pdf` | copertina (miniatura composita) → Le due opere affiancate → Introduzione → Punti in comune → Differenze → Tecnica a confronto → Contesto storico-artistico → Interpretazione critica → Curiosità |
+
+Dettagli tecnici:
+
+- **Dipendenza**: `make_pdf.py` richiede **Python 3 con reportlab**
+  (`pip install reportlab`) oltre a Pillow; se manca, l'endpoint risponde
+  `503` con il rimedio, mai una response appesa.
+- **Pipeline**: i builder puri `buildArtworkPdfPayload` /
+  `buildSubjectPdfPayload` / `buildComparisonPdfPayload` (in `server.mjs`,
+  con parametro `io` per iniettare le letture immagini nei test) producono il
+  payload tipografico con immagini in base64; `make_pdf.py` decodifica,
+  ritaglia (crop dei dettagli, thumbnail max 1800 px) e impagina via
+  reportlab. La response è `application/pdf` come attachment
+  (`Content-Disposition` con slug del titolo).
+- **Gate di prontezza**: `404` se l'id non esiste, `400` con
+  "Genera e salva prima i contenuti" se la scheda è vuota (stessi gate dei
+  viewer).
+- **Robustezza**: BLOB corrotti, formati non riconosciuti o crop degeneri
+  (es. box a 0 px) non fanno fallire il PDF — la tavola viene omessa con un
+  `AVVISO_PDF` su stderr e il testo resta completo.
 
 ## Verifica end-to-end effettuata (settembre 2026)
 

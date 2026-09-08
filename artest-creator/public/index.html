@@ -272,6 +272,31 @@ function put(path, body) { return api(path, { method: 'PUT', headers: { 'Content
 function patch(path, body) { return api(path, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); }
 function del(path) { return api(path, { method: 'DELETE' }); }
 
+/* esporta la scheda corrente come PDF "libro d'arte" */
+function downloadPdf(path, fallbackName) {
+  var btn = document.querySelector('[data-pdf]');
+  var old = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; }
+  toast('Generazione del PDF in corso…');
+  fetch(path).then(function (res) {
+    if (!res.ok) return res.json().catch(function () { return {}; }).then(function (b) { throw new Error((b.error && b.error.message) || ('HTTP ' + res.status)); });
+    var cd = res.headers.get('content-disposition') || '';
+    var m = cd.match(/filename="?([^";]+)"?/);
+    return res.blob().then(function (blob) { return { blob: blob, name: m ? m[1] : (fallbackName || 'scheda.pdf') }; });
+  }).then(function (r) {
+    var url = URL.createObjectURL(r.blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = r.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    toast('PDF generato: ' + r.name, true);
+  }).catch(function (e) {
+    toast('PDF non generato: ' + e.message);
+  }).then(function () {
+    if (btn) { btn.disabled = false; btn.innerHTML = old; }
+  });
+}
+
 /* ================= util ================= */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function toast(msg, ok) {
@@ -1871,13 +1896,21 @@ function pipeCancel() {
 /* ---------- viewer ---------- */
 function openViewer(id) { state.view = 'viewer'; state.viewerId = id; render(); }
 function renderViewer() {
-  var html = topbar('anteprima didattica', '<button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('anteprima didattica', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');
   if (b) b.onclick = function () { state.view = 'home'; refreshList(); };
   api('/api/artworks/' + state.viewerId).then(function (full) {
-    if (!full.overview) { appEl.innerHTML = topbar('anteprima', '') + '<div class="empty-state"><h2>Opera non pronta</h2><p>Genera e salva prima i contenuti.</p></div>'; return; }
+    if (!full.overview) {
+      // Scheda vuota: si mantiene comunque la topbar con ⬇ PDF (il click
+      // mostra il messaggio "Genera e salva prima i contenuti") e ← Elenco.
+      appEl.innerHTML = topbar('anteprima didattica', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>')
+        + '<div class="empty-state"><h2>Opera non pronta</h2><p>Genera e salva prima i contenuti.</p></div>';
+      var back = appEl.querySelector('[data-nav]');
+      if (back) back.onclick = function () { state.view = 'home'; refreshList(); };
+      return;
+    }
     renderViewerBody(full);
   }).catch(function () { appEl.innerHTML = '<div class="empty-state">Errore di caricamento</div>'; });
 }
@@ -2599,7 +2632,7 @@ function removeComparison(id) {
 
 /* ================= viewer SOGGETTO ================= */
 function renderSubjectViewer() {
-  var html = topbar('anteprima · soggetto', '<button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('anteprima · soggetto', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/subjects/\' + state.viewerSubjectId + \'/pdf\', \'scheda-soggetto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');
@@ -2648,7 +2681,7 @@ function renderSubjectViewer() {
 
 /* ================= viewer FACCIA A FACCIA ================= */
 function renderComparisonViewer() {
-  var html = topbar('anteprima · faccia a faccia', '<button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('anteprima · faccia a faccia', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/comparisons/\' + state.viewerComparisonId + \'/pdf\', \'scheda-confronto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');

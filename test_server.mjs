@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, copyFile, mkdtemp } from 'node:fs/promises';
+import { execFile, fork } from 'node:child_process';
+import { promisify } from 'node:util';
+import { readFile, writeFile, copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOverviewPrompt, buildSimilarPrompt, buildTextPrompt, callModel, callOpenRouter, callOpenRouterOverview, cleanModelJson, createAppServer, getOpenRouterApiKey, normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImage, VISION_MODEL, TEXT_MODEL } from './server.mjs';
+import { buildArtworkPdfPayload, buildSubjectPdfPayload, buildComparisonPdfPayload, createCreatorServer } from './artest-creator/server.mjs';
+
+const execFileAsync = promisify(execFile);
 
 // Libreria pubblicata: accesso in sola lettura alle schede "ready" di artest-creator.
 import { DB_PATH, listReadyArtworksRO, getArtworkImageDataRO, getOverviewRO, listDetailsRO, getDetailContentRO, listSourcesRO, listSimilarWorksRO, getSimilarImageRO } from './artest-creator/db.mjs';
@@ -416,4 +421,211 @@ test('callModel extracts url_citation annotations from the message', async () =>
   const result = await callModel(TEXT_MODEL, [{ type: 'text', text: 'ciao' }], 'test-key', fakeFetch);
   assert.deepEqual(result.citations, [{ title: 'Fonte', url: 'https://example.org' }]);
   if (previous === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previous;
+});
+
+// ---------------------------------------------------------------------------
+// Esportazione PDF "libro d'arte" (make_pdf.py + rotte /pdf)
+// ---------------------------------------------------------------------------
+const PDF_PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='; // 1x1 px PNG
+
+function runMakePdf(payload) {
+  return mkdtemp(join(tmpdir(), 'artest-pdf-')).then(async dir => {
+    const inPath = join(dir, 'in.json');
+    const outPath = join(dir, 'out.pdf');
+    await writeFile(inPath, JSON.stringify(payload));
+    try {
+      await execFileAsync('python3', ['make_pdf.py', inPath, outPath], { cwd: 'artest-creator', timeout: 120000 });
+      const buf = await readFile(outPath);
+      return buf;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+function countPdfPages(buf) {
+  // Conta gli oggetti pagina sull'intero buffer: i primi 4000 byte contengono
+  // solo parte dell'albero delle pagine e sottostimano il totale.
+  return (String(buf).match(/\/Type\s*\/Page[^s]/g) || []).length;
+}
+
+function pdfImagesClean(id) {
+  // Il DB reale restituisce BLOB come Buffer: il mock fa lo stesso (PNG 1x1 valido).
+  return { clean: { data: Buffer.from(PDF_PIXEL, 'base64'), mime: 'image/png' }, annotated: null };
+}
+function pdfSimilarImage(artworkId, similarId) {
+  return { data: Buffer.from(PDF_PIXEL, 'base64'), mime: 'image/png' };
+}
+
+test('make_pdf renders the artwork payload as a valid art-book PDF', async () => {
+  const payload = buildArtworkPdfPayload({
+    id: 'w1', title: 'Annunciazione', artist: 'Beato Angelico', date: 'c. 1440', period: 'Rinascimento',
+    technique: 'Affresco', institution: 'San Marco', location: 'Firenze', hasImage: true, hasAnnotated: false,
+    overview: { painting: 'Un affresco luminoso.', artist: 'Fra Giovanni da Fiesole, domenicano.' },
+    details: [{ id: 1, title: 'L’angelo', category: 'Figura', region: { x: 0.1, y: 0.1, width: 0.3, height: 0.4 },
+      tabs: { studio: { content: { observation: 'Vedo un angelo.', meaning: 'È Gabriele.', relation: 'Annuncia a Maria.', lookAgain: 'Guarda le ali.' } },
+              approfondimento: { content: { curiosity: 'Una curiosità.', comparisons: 'Un confronto.', openQuestions: 'Una domanda.', technique: 'Tempera.' } } } }],
+    similarWorks: [{ id: 1, title: 'Annunciazione di Simone Martini', artist: 'Simone Martini', date: '1333', museum: 'Uffizi', caption: 'Gotico senese.', hasImage: true }],
+    sources: [{ title: 'Museo di San Marco', url: 'https://example.org', type: 'Museo' }]
+  }, {
+    imageData: pdfImagesClean,
+    similarImage: pdfSimilarImage
+  });
+  assert.equal(payload.type, 'opera');
+  assert.equal(payload.images.clean.data, PDF_PIXEL);
+  const buf = await runMakePdf(payload);
+  assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(buf.length > 5000);
+  assert.ok(countPdfPages(buf) >= 4); // copertina + presentazione + opera + dettaglio + simili + fonti
+});
+
+test('buildArtworkPdfPayload handles node:sqlite Uint8Array BLOBs without mangling', () => {
+  // Regressione: i BLOB di node:sqlite sono Uint8Array, non Buffer. Devono
+  // essere copiati byte-per-byte, non interpretati come stringa base64.
+  const raw = Buffer.from(PDF_PIXEL, 'base64');
+  const payload = buildArtworkPdfPayload({
+    id: 'w1', title: 'T', artist: 'A', hasImage: true,
+    overview: { painting: 'x', artist: 'y' }, details: [], similarWorks: [], sources: []
+  }, {
+    imageData: () => ({ clean: { data: new Uint8Array(raw), mime: 'image/png' }, annotated: null })
+  });
+  assert.equal(payload.images.clean.data, PDF_PIXEL);
+});
+
+test('make_pdf omits corrupt images instead of crashing', async () => {
+  const payload = {
+    type: 'opera',
+    eyebrow: 'Scheda didattica · opera',
+    title: 'Opera corrotta',
+    subtitle: 'Anonimo',
+    meta: ['c. 1400'],
+    coverImage: { ref: 'clean' },
+    images: { clean: { data: Buffer.from([1, 2, 3]).toString('base64'), mime: 'image/jpeg' } },
+    sections: [
+      { t: 'chapter', n: 1, title: 'Presentazione' },
+      { t: 'p', text: 'Il dipinto resta leggibile anche senza tavole.' }
+    ]
+  };
+  const buf = await runMakePdf(payload);
+  assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(buf.length > 1000);
+});
+
+test('make_pdf renders the subject payload as a valid art-book PDF', async () => {
+  const payload = buildSubjectPdfPayload({
+    id: 'annunciazione', name: 'Annunciazione', shortDesc: 'Tema mariano.',
+    intro: 'L’Annunciazione racconta…', origins: 'Le prime attestazioni…',
+    chapters: [{ era: 'Medioevo', text: 'Fondo oro.' }, { era: 'Rinascimento', text: 'Prospettiva.' }],
+    works: [{ id: 1, title: 'Natività', artist: 'Giotto', date: '1305', museum: 'Cappella Scrovegni', caption: 'Proto-rinascimento.', hasImage: false }],
+    symbols: JSON.stringify([{ symbol: 'Giglio', meaning: 'Purezza' }]),
+    interpretations: 'Da dogma a dramma umano.', curiosities: 'Il Capodanno fiorentino.'
+  });
+  assert.equal(payload.type, 'soggetto');
+  const buf = await runMakePdf(payload);
+  assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(countPdfPages(buf) >= 5); // copertina + 5 capitoli
+});
+
+test('make_pdf renders the comparison payload as a valid art-book PDF', async () => {
+  const payload = buildComparisonPdfPayload({
+    id: 'cmp-1', title: 'Angelico vs Leonardo', comparisonType: 'same-subject', hasThumb: false,
+    intro: 'Due Annunciazioni a confronto.',
+    sides: [{ side: 'a', source: 'external', title: 'Annunciazione', artist: 'Beato Angelico', date: '1440', museum: 'San Marco', hasImage: false },
+            { side: 'b', source: 'external', title: 'Annunciazione', artist: 'Leonardo', date: '1472', museum: 'Uffizi', hasImage: false }],
+    points: [{ kind: 'similar', title: 'La luce', text: 'Divina in entrambe.' },
+             { kind: 'different', title: 'Lo spazio', text: 'Chiostro vs natura.' }],
+    technique: 'Affresco vs olio.', context: 'Firenze 1440 vs 1472.', critique: 'Due poli del Rinascimento.', curiosities: 'Le ali di Leonardo.'
+  });
+  assert.equal(payload.type, 'confronto');
+  assert.equal(payload.sections.some(s => s.t === 'pair'), true);
+  const buf = await runMakePdf(payload);
+  assert.equal(buf.subarray(0, 5).toString(), '%PDF-');
+  assert.ok(countPdfPages(buf) >= 5);
+});
+
+test('creator PDF endpoints return application/pdf for the three card types', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artest-pdf-api-'));
+  const dbPath = join(dir, 'test.db');
+  const tmpScript = join(dir, 'spawn_server.mjs');
+  const previous = process.env.ARTEST_CREATOR_DB;
+  process.env.ARTEST_CREATOR_DB = dbPath;
+  let child;
+  try {
+    // DB popolato via write-connection dirette (niente LLM); l'immagine è il
+    // PNG 1x1 valido: esercita il crop su BLOB non-JPEG in make_pdf.py.
+    const png = Buffer.from(PDF_PIXEL, 'base64');
+    const db = await import('./artest-creator/db.mjs?t=' + Date.now());
+    db.initSchema();
+    db.createArtwork({ id: 'w1', title: 'Annunciazione', artist: 'Beato Angelico', date: 'c. 1440', imagePath: 'uploads/x.jpg', imageData: png, imageMime: 'image/png', imageWidth: 1, imageHeight: 1 });
+    db.saveOverview('w1', { painting: 'Il dipinto…', artist: 'L’artista…' }, { status: 'approved' });
+    db.addDetail('w1', { title: 'L’angelo', category: 'Figura', x: 0.1, y: 0.1, width: 0.3, height: 0.4, sortOrder: 0 });
+    db.saveDetailContent(1, 'studio', { observation: 'Vedo…', meaning: 'Significa…', relation: 'In relazione…', lookAgain: 'Guarda…' }, { status: 'approved' });
+    db.approveArtwork('w1');
+    db.createSubject({ id: 'nativita', name: 'Natività' });
+    db.updateSubject('nativita', { intro: 'Intro…', origins: 'Origini…' });
+    db.replaceSubjectChapters('nativita', [{ era: 'Medioevo', text: 'Medioevo.' }]);
+    db.replaceSubjectWorks('nativita', [{ title: 'Natività', artist: 'Giotto', date: '1305', museum: 'A', caption: 'C' }]);
+    db.updateSubject('nativita', { status: 'ready' });
+    db.createComparison({ id: 'cmp-1', title: 'Confronto', comparisonType: 'same-subject' });
+    db.setComparisonSide('cmp-1', 'a', { source: 'library', artworkId: 'w1', title: 'A' });
+    db.setComparisonSide('cmp-1', 'b', { source: 'external', title: 'B', imageStatus: 'missing' });
+    db.replaceComparisonPoints('cmp-1', [{ kind: 'similar', title: 'Comune', text: 'Testo.' }]);
+    db.updateComparison('cmp-1', { intro: 'Intro del confronto.', status: 'ready' });
+
+    // Server subprocess sul DB temporaneo (la cache _db del modulo viene
+    // inizializzata al primo uso dentro il subprocess, isolata dal runner).
+    // Lo script vive in dir ma importa server.mjs con path assoluto file://.
+    const serverAbs = join(process.cwd(), 'artest-creator', 'server.mjs').replace(/\\/g, '/');
+    await writeFile(tmpScript, [
+      `import { createCreatorServer } from 'file://${serverAbs}';`,
+      'const s = createCreatorServer();',
+      's.listen(0, "127.0.0.1", () => {',
+      '  process.stdout.write(String(s.address().port) + "\\n");',
+      '});'
+    ].join('\n'));
+    child = fork(tmpScript, [], { env: { ...process.env, ARTEST_CREATOR_DB: dbPath }, silent: true });
+    const port = await new Promise((resolve, reject) => {
+      let out = '';
+      const timer = setTimeout(() => reject(new Error('timeout in attesa del subserver')), 15000);
+      child.stdout.on('data', c => {
+        out += String(c);
+        const nl = out.indexOf('\n');
+        if (nl >= 0) { clearTimeout(timer); resolve(Number(out.slice(0, nl).trim())); }
+      });
+      child.on('error', e => { clearTimeout(timer); reject(e); });
+      child.on('exit', code => { clearTimeout(timer); reject(new Error('subserver uscito subito, codice ' + code)); });
+    });
+    if (!port || !Number.isFinite(port)) throw new Error('porta subserver non valida: ' + port);
+    const base = 'http://127.0.0.1:' + port;
+    for (const [path, name] of [
+      ['/api/artworks/w1/pdf', 'annunciazione.pdf'],
+      ['/api/subjects/nativita/pdf', 'nativita.pdf'],
+      ['/api/comparisons/cmp-1/pdf', 'confronto.pdf']
+    ]) {
+      const res = await fetch(base + path);
+      assert.equal(res.status, 200, path);
+      assert.equal((res.headers.get('content-type') || '').includes('application/pdf'), true, path);
+      assert.ok((res.headers.get('content-disposition') || '').includes(name), path);
+      const buf = Buffer.from(await res.arrayBuffer());
+      assert.equal(buf.subarray(0, 5).toString(), '%PDF-', path);
+      assert.ok(buf.length > 2000, path);
+    }
+    // gate di prontezza: soggetto senza contenuti → 400 con messaggio chiaro
+    db.createSubject({ id: 'vuoto', name: 'Vuoto' });
+    const empty = await fetch(base + '/api/subjects/vuoto/pdf');
+    assert.equal(empty.status, 400);
+    const body = await empty.json();
+    assert.equal(body.error.message.includes('Genera e salva prima i contenuti'), true);
+    // 404 per id inesistente
+    const missing = await fetch(base + '/api/subjects/inesistente/pdf');
+    assert.equal(missing.status, 404);
+  } finally {
+    if (child) {
+      try { child.kill('SIGTERM'); } catch {}
+      try { await new Promise(r => setTimeout(r, 50)); } catch {}
+      try { child.kill('SIGKILL'); } catch {}
+    }
+    if (previous === undefined) delete process.env.ARTEST_CREATOR_DB; else process.env.ARTEST_CREATOR_DB = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
 });

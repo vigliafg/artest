@@ -18,7 +18,7 @@ import {
   createSubject, getSubject, listSubjects, updateSubject, deleteSubject, approveSubject,
   replaceSubjectChapters, listSubjectChapters, getFullSubject, replaceSubjectWorks, listSubjectWorks, getSubjectWorkImage,
   createComparison, getComparison, listComparisons, updateComparison, deleteComparison, approveComparison, setComparisonThumb,
-  setComparisonSide, listComparisonSides, getComparisonSide, getComparisonSideImage,
+  setComparisonSide, listComparisonSides, getComparisonSide, getComparisonSideImage, getComparisonThumb,
   replaceComparisonPoints, listComparisonPoints, getFullComparison
 } from './db.mjs';
 import { callModel, VISION_MODEL, TEXT_MODEL, getOpenRouterApiKey,
@@ -523,6 +523,14 @@ function handleApi(req, res, urlPath) {
     return json(res, 200, { ok: true, published });
   }
 
+  // GET /api/artworks/:id/pdf — PDF "libro d'arte" della scheda opera
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'pdf') {
+    const full = getFullArtwork(parts[2]);
+    if (!full) return err(res, 404, 'Opera non trovata');
+    if (!full.overview && !(full.details || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
+    return sendPdf(res, buildArtworkPdfPayload(full), slugify(full.title || 'opera') + '.pdf');
+  }
+
   // PATCH /api/details/:id/content/:tab — salva (approva) il contenuto rivisto dall'utente
   if (method === 'PATCH' && parts.length === 5 && parts[0] === 'api' && parts[1] === 'details' && parts[3] === 'content') {
     const detailId = Number(parts[2]);
@@ -659,6 +667,13 @@ function handleApi(req, res, urlPath) {
     const buf = Buffer.from(img.data);
     res.writeHead(200, { 'Content-Type': img.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return res.end(buf);
+  }
+  // GET /api/subjects/:id/pdf — PDF "libro d'arte" della scheda soggetto
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'pdf') {
+    const full = getFullSubject(parts[2]);
+    if (!full) return err(res, 404, 'Soggetto non trovato');
+    if (!full.intro && !full.origins && !(full.chapters || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
+    return sendPdf(res, buildSubjectPdfPayload(full), slugify(full.name || 'soggetto') + '.pdf');
   }
 
   // ================= Schede FACCIA A FACCIA =================
@@ -819,6 +834,13 @@ function handleApi(req, res, urlPath) {
     res.writeHead(200, { 'Content-Type': row.thumb_mime || 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return res.end(buf);
   }
+  // GET /api/comparisons/:id/pdf — PDF "libro d'arte" della scheda confronto
+  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'pdf') {
+    const full = getFullComparison(parts[2]);
+    if (!full) return err(res, 404, 'Confronto non trovato');
+    if (!full.intro && !(full.points || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
+    return sendPdf(res, buildComparisonPdfPayload(full), slugify(full.title || 'confronto') + '.pdf');
+  }
 
   return err(res, 404, 'Endpoint non trovato: ' + method + ' ' + urlPath);
 }
@@ -958,6 +980,236 @@ async function renderAnnotated(artwork) {
     unlink(metaPath).catch(() => {});
     unlink(outPath).catch(() => {});
   }
+}
+
+// ---------- Esportazione PDF "libro d'arte" (payload → make_pdf.py) ----------
+function imageRef(images, key, buf, mime) {
+  if (buf == null) return null;
+  // Il DB (node:sqlite) restituisce i BLOB come Uint8Array, non Buffer;
+  // i test/mock possono passare Buffer oppure una stringa base64 già pronta.
+  let data;
+  if (Buffer.isBuffer(buf)) data = buf;
+  else if (buf instanceof Uint8Array) data = Buffer.from(buf);
+  else if (typeof buf === 'string') data = Buffer.from(buf, 'base64');
+  else data = Buffer.from(buf);
+  if (!data.length) return null;
+  images[key] = { data: data.toString('base64'), mime: mime || 'image/jpeg' };
+  return { ref: key };
+}
+
+export function buildArtworkPdfPayload(full, io = {}) {
+  const images = {};
+  const ref = (key, data, mime) => imageRef(images, key, data, mime);
+  const imgs = io.imageData ? io.imageData(full.id) : getArtworkImageData(full.id);
+  const clean = imgs && imgs.clean;
+  const annotated = imgs && imgs.annotated;
+  const coverImage = clean ? ref('clean', clean.data, clean.mime) : null;
+  const annotatedRef = annotated ? ref('annotated', annotated.data, annotated.mime) : null;
+  const getSim = io.similarImage || getSimilarImage;
+  const sections = [];
+  let n = 0;
+  const chapter = (title) => { n += 1; sections.push({ t: 'chapter', n, title }); };
+
+  chapter('Presentazione');
+  if (full.overview?.painting) sections.push({ t: 'h2', text: 'Il dipinto' }, { t: 'p', text: full.overview.painting });
+  if (full.overview?.artist) sections.push({ t: 'h2', text: 'L’artista' }, { t: 'p', text: full.overview.artist });
+
+  if (annotatedRef || coverImage) {
+    chapter('L’opera');
+    sections.push({ t: 'image', image: annotatedRef || coverImage, caption: full.title + ' — ' + (full.artist || 'artista ignoto'), fullpage: true });
+  }
+
+  for (const d of (full.details || [])) {
+    chapter(d.title);
+    const studio = d.tabs?.studio?.content || {};
+    const appr = d.tabs?.approfondimento?.content || {};
+    if (coverImage && d.region) {
+      sections.push({ t: 'image', image: { ref: 'clean', crop: d.region }, caption: d.title + (d.category ? ' (' + d.category + ')' : '') });
+    }
+    if (studio.observation) sections.push({ t: 'h2', text: 'Cosa vedi' }, { t: 'p', text: studio.observation });
+    if (studio.meaning) sections.push({ t: 'h2', text: 'Cosa significa' }, { t: 'p', text: studio.meaning });
+    if (studio.relation) sections.push({ t: 'h2', text: 'In relazione all’opera' }, { t: 'p', text: studio.relation });
+    if (studio.lookAgain) sections.push({ t: 'kv', items: [['Guarda ancora', studio.lookAgain]] });
+    if (appr.curiosity) sections.push({ t: 'h2', text: 'Una curiosità' }, { t: 'p', text: appr.curiosity });
+    if (appr.comparisons) sections.push({ t: 'h2', text: 'Confronti' }, { t: 'p', text: appr.comparisons });
+    if (appr.openQuestions) sections.push({ t: 'h2', text: 'Questioni aperte' }, { t: 'p', text: appr.openQuestions });
+    if (appr.technique) sections.push({ t: 'h2', text: 'Tecnica e materia' }, { t: 'p', text: appr.technique });
+    if (appr.lookAgain) sections.push({ t: 'kv', items: [['Guarda ancora', appr.lookAgain]] });
+  }
+
+  const similar = (full.similarWorks || []).filter(w => w.title);
+  if (similar.length) {
+    chapter('Opere simili');
+    sections.push({ t: 'gallery', items: similar.map(w => {
+      const img = w.hasImage ? getSim(full.id, w.id) : null;
+      return {
+        image: img ? ref('sim' + w.id, img.data, img.mime) : null,
+        caption: (w.title || '') + (w.artist ? ' — ' + w.artist : '') + (w.date ? ', ' + w.date : ''),
+        meta: [w.museum, w.caption].filter(Boolean).join(' · ')
+      };
+    }) });
+  }
+
+  const sources = (full.sources || []).filter(s => s.title || s.url);
+  if (sources.length) {
+    chapter('Fonti');
+    sections.push({ t: 'kv', items: sources.map(s => [s.title || s.url, s.url]) });
+  }
+
+  return {
+    type: 'opera',
+    eyebrow: 'Scheda didattica · opera',
+    title: full.title || 'Opera senza titolo',
+    subtitle: full.artist || '',
+    meta: [full.date, full.period, full.technique, full.institution, full.location].filter(Boolean),
+    coverImage,
+    images,
+    sections
+  };
+}
+
+export function buildSubjectPdfPayload(full, io = {}) {
+  const images = {};
+  const sections = [];
+  let n = 0;
+  const chapter = (title) => { n += 1; sections.push({ t: 'chapter', n, title }); };
+  const getWorkImage = io.subjectWorkImage || getSubjectWorkImage;
+
+  if (full.intro) chapter('Introduzione'), sections.push({ t: 'p', text: full.intro });
+  if (full.origins) chapter('Origini e fonti iconografiche'), sections.push({ t: 'p', text: full.origins });
+  if ((full.chapters || []).length) {
+    chapter('L’evoluzione per epoche');
+    for (const c of full.chapters) {
+      sections.push({ t: 'h2', text: c.era || 'Epoca' }, { t: 'p', text: c.text || '' });
+    }
+  }
+  const works = (full.works || []).filter(w => w.title);
+  if (works.length) {
+    chapter('Opere rappresentative');
+    sections.push({ t: 'gallery', items: works.map(w => {
+      const img = w.hasImage ? getWorkImage(full.id, w.id) : null;
+      return {
+        image: img ? imageRef(images, 'sw' + w.id, img.data, img.mime) : null,
+        caption: (w.title || '') + (w.artist ? ' — ' + w.artist : '') + (w.date ? ', ' + w.date : ''),
+        meta: [w.museum, w.caption].filter(Boolean).join(' · ')
+      };
+    }) });
+  }
+  let symbols = [];
+  try { symbols = JSON.parse(full.symbols || '[]'); } catch { symbols = []; }
+  if (symbols.length) {
+    chapter('Attributi e simboli ricorrenti');
+    sections.push({ t: 'kv', items: symbols.map(s => [s.symbol || '', s.meaning || '']) });
+  }
+  if (full.interpretations) chapter('Interpretazioni e varianti'), sections.push({ t: 'p', text: full.interpretations });
+  if (full.curiosities) chapter('Curiosità e questioni aperte'), sections.push({ t: 'p', text: full.curiosities });
+
+  return {
+    type: 'soggetto',
+    eyebrow: 'Scheda didattica · soggetto nella storia dell’arte',
+    title: full.name || 'Soggetto',
+    subtitle: '',
+    meta: [],
+    coverImage: works.length && works[0].hasImage ? { ref: 'sw' + works[0].id } : null,
+    images,
+    sections
+  };
+}
+
+export function buildComparisonPdfPayload(full, io = {}) {
+  const images = {};
+  const sections = [];
+  let n = 0;
+  const chapter = (title) => { n += 1; sections.push({ t: 'chapter', n, title }); };
+  const getArtworkImgs = io.artworkImageData || getArtworkImageData;
+  const getSideImage = io.comparisonSideImage || getComparisonSideImage;
+  const getThumb = io.comparisonThumb || getComparisonThumb;
+  const sideMeta = (s) => [s.artist, s.date, s.museum].filter(Boolean).join(' · ');
+  const sideOf = (letter) => (full.sides || []).find(s => s.side === letter) || {};
+  const a = sideOf('a'), b = sideOf('b');
+
+  const sideImage = (letter, s) => {
+    if (s.source === 'library' && s.artworkId) {
+      const imgs = getArtworkImgs(s.artworkId);
+      if (imgs && imgs.clean) return imageRef(images, 'side' + letter, imgs.clean.data, imgs.clean.mime);
+    }
+    const img = getSideImage(full.id, letter);
+    if (img) return imageRef(images, 'side' + letter, img.data, img.mime);
+    return null;
+  };
+  const imgA = sideImage('a', a), imgB = sideImage('b', b);
+
+  const thumbRow = getThumb(full.id);
+  const coverImage = thumbRow ? imageRef(images, 'thumb', thumbRow.data, thumbRow.mime) : (imgA || imgB);
+
+  chapter('Le due opere');
+  sections.push({ t: 'pair',
+    a: { image: imgA, caption: a.title || 'Opera A', meta: [sideMeta(a)].filter(Boolean) },
+    b: { image: imgB, caption: b.title || 'Opera B', meta: [sideMeta(b)].filter(Boolean) }
+  });
+
+  if (full.intro) chapter('Introduzione al confronto'), sections.push({ t: 'p', text: full.intro });
+  const points = full.points || [];
+  const similar = points.filter(p => p.kind === 'similar');
+  const different = points.filter(p => p.kind === 'different');
+  if (similar.length) chapter('Punti in comune'), sections.push({ t: 'points', items: similar.map(p => ({ title: p.title, text: p.text })) });
+  if (different.length) chapter('Differenze'), sections.push({ t: 'points', items: different.map(p => ({ title: p.title, text: p.text })) });
+  if (full.technique) chapter('Tecnica a confronto'), sections.push({ t: 'p', text: full.technique });
+  if (full.context) chapter('Contesto storico-artistico'), sections.push({ t: 'p', text: full.context });
+  if (full.critique) chapter('Interpretazione critica'), sections.push({ t: 'p', text: full.critique });
+  if (full.curiosities) chapter('Curiosità'), sections.push({ t: 'p', text: full.curiosities });
+
+  const typeLabel = full.comparisonType === 'same-artist' ? 'stesso artista, fasi diverse' : 'stesso soggetto, artisti diversi';
+  return {
+    type: 'confronto',
+    eyebrow: 'Scheda didattica · faccia a faccia',
+    title: full.title || 'Confronto',
+    subtitle: typeLabel,
+    meta: [a.title, b.title].filter(Boolean).map((t, i) => (i === 0 ? 'A · ' : 'B · ') + t),
+    coverImage,
+    images,
+    sections
+  };
+}
+
+async function renderPdf(payload) {
+  const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const inPath = join(UPLOAD_DIR, `pdf-${stamp}.json`);
+  const outPath = join(UPLOAD_DIR, `pdf-${stamp}.pdf`);
+  await writeFile(inPath, JSON.stringify(payload));
+  try {
+    try {
+      await execFileAsync('python3', ['make_pdf.py', inPath, outPath], { cwd: APP_ROOT, timeout: 120000 });
+    } catch (e) {
+      const stderr = String((e && e.stderr) || '');
+      if (e.code === 3 || stderr.includes('reportlab non installato')) {
+        throw new Error('reportlab non è installato: esegui "pip install reportlab" e riprova.');
+      }
+      throw new Error('Generazione PDF fallita: ' + (stderr.split('\n').filter(Boolean).pop() || e.message));
+    }
+    return await readFile(outPath);
+  } finally {
+    unlink(inPath).catch(() => {});
+    unlink(outPath).catch(() => {});
+  }
+}
+
+function sendPdf(res, payload, filename) {
+  return renderPdf(payload).then(buf => {
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Length': buf.length,
+      'Content-Disposition': 'attachment; filename="' + filename + '"',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(buf);
+  }).catch(e => {
+    // reportlab assente -> 503 con rimedio; altri errori Python -> 500. Senza
+    // questo catch la response resterebbe appesa (unhandled rejection).
+    const message = String((e && e.message) || e);
+    err(res, message.includes('reportlab') ? 503 : 500, message);
+  });
 }
 
 // ---------- Schede Soggetto e Faccia a faccia: serializzatori, prompt, normalizzatori ----------
@@ -1164,41 +1416,45 @@ async function serveStatic(req, res, urlPath) {
   }
 }
 
-const server = createServer((req, res) => {
-  const url = new URL(req.url, 'http://localhost');
-  const urlPath = decodeURIComponent(url.pathname);
+export function createCreatorServer() {
+  return createServer((req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const urlPath = decodeURIComponent(url.pathname);
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
-    res.end(); return;
-  }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+      res.end(); return;
+    }
 
-  if (urlPath === '/api/status') {
-    const full = listArtworks().length;
-    return json(res, 200, {
-      app: 'artest-creator',
-      configured: Boolean(getOpenRouterApiKey()),
-      visionModel: VISION_MODEL,
-      textModel: TEXT_MODEL,
-      artworks: full,
-      database: getDb() ? 'sqlite' : null
-    });
-  }
+    if (urlPath === '/api/status') {
+      const full = listArtworks().length;
+      return json(res, 200, {
+        app: 'artest-creator',
+        configured: Boolean(getOpenRouterApiKey()),
+        visionModel: VISION_MODEL,
+        textModel: TEXT_MODEL,
+        artworks: full,
+        database: getDb() ? 'sqlite' : null
+      });
+    }
 
-  if (urlPath.startsWith('/api/')) return handleApi(req, res, urlPath);
+    if (urlPath.startsWith('/api/')) return handleApi(req, res, urlPath);
 
-  // uploads/ (immagini)
-  if (urlPath.startsWith('/uploads/')) {
-    const filePath = resolve(APP_ROOT, `.${normalize(urlPath)}`);
-    if (!filePath.startsWith(APP_ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
-    return readFile(filePath).then(data => {
-      res.writeHead(200, { 'Content-Type': urlPath.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-cache' });
-      res.end(data);
-    }).catch(() => { res.writeHead(404); res.end('Not Found'); });
-  }
+    // uploads/ (immagini)
+    if (urlPath.startsWith('/uploads/')) {
+      const filePath = resolve(APP_ROOT, `.${normalize(urlPath)}`);
+      if (!filePath.startsWith(APP_ROOT)) { res.writeHead(403); res.end('Forbidden'); return; }
+      return readFile(filePath).then(data => {
+        res.writeHead(200, { 'Content-Type': urlPath.endsWith('.png') ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-cache' });
+        res.end(data);
+      }).catch(() => { res.writeHead(404); res.end('Not Found'); });
+    }
 
-  return serveStatic(req, res, urlPath);
-});
+    return serveStatic(req, res, urlPath);
+  });
+}
+
+const server = createCreatorServer();
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   server.listen(PORT, HOST, () => {

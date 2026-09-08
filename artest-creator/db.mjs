@@ -675,6 +675,10 @@ export function getComparisonSideImage(comparisonId, side, conn) {
   const row = (conn || getDb()).prepare('SELECT image_data, image_mime FROM comparison_sides WHERE comparison_id = ? AND side = ?').get(comparisonId, side);
   return (row && row.image_data) ? { data: row.image_data, mime: row.image_mime } : null;
 }
+export function getComparisonThumb(comparisonId, conn) {
+  const row = (conn || getDb()).prepare('SELECT thumb_data, thumb_mime FROM comparisons WHERE id = ?').get(comparisonId);
+  return (row && row.thumb_data) ? { data: row.thumb_data, mime: row.thumb_mime || 'image/jpeg' } : null;
+}
 export function replaceComparisonPoints(comparisonId, points) {
   getDb().prepare('DELETE FROM comparison_points WHERE comparison_id = ?').run(comparisonId);
   const insert = getDb().prepare('INSERT INTO comparison_points (comparison_id, kind, sort_order, title, text) VALUES (?, ?, ?, ?, ?)');
