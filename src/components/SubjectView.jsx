@@ -39,9 +39,12 @@ function SubjectView({ subject, onBack }) {
   return (
     <main className="explore-page">
       <header className="explore-header">
-        <button className="back-button" onClick={onBack}><span className="back-icon">←</span> Torna alla collezione</button>
+        <div className="explore-header-left">
+          <a href="#" className="brand" onClick={(event) => { event.preventDefault(); onBack(); }} aria-label="Torna alla collezione"><span className="brand-mark"><i></i><i></i><i></i></span><span>leggi l’<strong>opera</strong></span></a>
+          <button className="config-button hub-button" onClick={() => { location.href = hubUrl(); }} title="Torna all’hub di Artest"><span>←</span> Hub</button>
+        </div>
         <div className="explore-progress"><span>02</span><i></i><span>Il soggetto nella storia dell’arte</span></div>
-        <span className="header-info" aria-hidden="true"><Icon name="sparkle" size={17} /></span>
+        <button className="back-button" onClick={onBack}><span className="back-icon">←</span> Torna alla collezione</button>
       </header>
       <section className="explore-intro">
         <div>

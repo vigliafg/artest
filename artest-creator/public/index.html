@@ -13,7 +13,11 @@
 button,input,textarea,select{font:inherit}button{cursor:pointer}
 h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .app{max-width:1200px;margin:0 auto;padding:0 28px 70px}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--line);margin-bottom:26px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--line);margin-bottom:26px}
+.topbar .left{display:flex;align-items:center;gap:16px}
+.topbar .hub-btn{border-color:var(--ink);color:var(--ink)}
+.topbar .hub-btn:hover{border-color:var(--coral);color:var(--coral)}
+.topbar-title{margin:0 0 18px;font-size:28px}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-size:19px;font-weight:700}
 .brand-mark{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .brand-mark i{display:block;width:6px;height:16px;border-radius:5px;transform:rotate(35deg);background:var(--coral)}
@@ -197,6 +201,15 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .sim-slide figcaption span,.sim-slide figcaption small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
 .sim-slide figcaption p{margin:7px 0 0;color:var(--ink);font-size:11px;line-height:1.5}
 /* ---- Schede Soggetto e Faccia a faccia ---- */
+/* Filtri a tab della home (come il catalogo di artest) */
+.home-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:22px 0 6px}
+.home-tab{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:30px;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.home-tab:hover{border-color:var(--coral);background:#fff9f5}
+.home-tab.active{border-color:var(--coral);background:var(--coral);color:#fff}
+.home-tab .tab-count{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--paper);color:var(--muted);font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+.home-tab.active .tab-count{background:rgba(255,255,255,.25);color:#fff}
+.type-tag.tag-btn{cursor:pointer;font:inherit;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em}
+.type-tag.tag-btn:hover{background:#fff9f5}
 .type-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:34px 0 14px}
 .type-head h2{margin:0;font-size:26px}
 .type-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--coral);border:1px solid #e8c5ba;border-radius:20px;padding:5px 11px;display:inline-flex;gap:6px;align-items:center}
@@ -249,6 +262,7 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 .cmp-side-card .side-half .cap span{color:var(--muted);font-size:10px;line-height:1.5;display:block}
 @media(max-width:760px){.side-pick,.cmp-side-card{grid-template-columns:1fr}.chapter-row,.symbol-row,.pt-row{grid-template-columns:1fr}}
 </style>
+<script>window.CREATOR_DATA = { hubUrl: 'http://127.0.0.1:18080/' };</script><!--APP_CONFIG-->
 </head>
 <body>
 <div class="app" id="app"></div>
@@ -256,7 +270,7 @@ h1,h2,h3{font-family:'Playfair Display',Georgia,serif;letter-spacing:-.04em}
 <script>
 'use strict';
 /* ================= stato ================= */
-var state = { view: 'home', artwork: null, list: [], busy: {}, log: [] };
+var state = { view: 'home', homeTab: 'all', artwork: null, list: [], busy: {}, log: [] };
 
 /* ================= api ================= */
 function api(path, opts) {
@@ -357,7 +371,20 @@ function iconBtn(label, fn, extra) {
 }
 
 function render() {
-  if (state.view === 'home') return renderHome();
+  if (state.view === 'home') {
+    // Cambio tab dalla home: ridisegno leggero del solo corpo (le liste sono già in stato).
+    if (state.homeRedraw && state.homeSectionEl && document.contains(state.homeSectionEl)) {
+      state.homeSectionEl.innerHTML = homeSectionBody();
+      // Sincronizza anche lo stato attivo delle tab (il ridisegno leggero non tocca la barra).
+      appEl.querySelectorAll('.home-tab').forEach(function (b) {
+        var on = b.getAttribute('data-tab') === state.homeTab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      return;
+    }
+    return renderHome();
+  }
   if (state.view === 'studio') return renderStudio();
   if (state.view === 'viewer') return renderViewer();
   if (state.view === 'subject-studio') return renderSubjectStudio();
@@ -366,72 +393,107 @@ function render() {
   if (state.view === 'comparison-viewer') return renderComparisonViewer();
 }
 function topbar(title, rightHtml) {
-  return '<header class="topbar"><a class="brand" href="#" data-nav="home"><span class="brand-mark"><i></i><i></i><i></i></span>artest-creator</a>' +
-    '<div class="right"><span class="eyebrow">' + esc(title || '') + '</span>' + (rightHtml || '') + '</div></header>';
+  // «← Hub» a SINISTRA accanto al brand: navigazione primaria, separata dalle
+  // azioni contestuali di pagina a destra («← Elenco», «⬇ PDF»), che restano le
+  // uniche voci sulla destra. Il titolo di pagina (title) torna sotto la barra
+  // come h1 visibile (page-title), più immediato dell'occhiello nell'header.
+  var hub = (window.CREATOR_DATA && window.CREATOR_DATA.hubUrl) || ('http://' + (location.hostname || '127.0.0.1') + ':18080/');
+  var right = rightHtml || '';
+  var h1 = title ? '<h1 class="page-title topbar-title">' + esc(title) + '</h1>' : '';
+  return '<header class="topbar"><div class="left"><a class="brand" href="#" data-nav="home"><span class="brand-mark"><i></i><i></i><i></i></span>artest-creator</a>' +
+    '<button class="btn small ghost hub-btn" onclick="location.href=' + JSON.stringify(hub).replace(/"/g, '&quot;') + '">← Hub</button></div>' +
+    '<div class="right">' + right + '</div></header>' + h1;
 }
 
 /* ---------- home ---------- */
-function homeTypeHeader(title, count) {
-  return '<div class="type-head"><h2>' + esc(title) + '</h2><span class="type-tag">' + count + ' ' + (count === 1 ? 'scheda' : 'schede') + '</span></div>';
+function homeTypeHeader(title, count, tabKey) {
+  // Il contatore è un bottone: porta in primo piano la sezione (filtro a tab «come nel catalogo di artest»).
+  return '<div class="type-head"><h2>' + esc(title) + '</h2>' +
+    '<button class="type-tag tag-btn" data-tab="' + tabKey + '" title="Mostra solo questa sezione">' + count + ' ' + (count === 1 ? 'scheda' : 'schede') + '</button></div>';
+}
+function homeSectionBody() {
+  // Corpo della sezione attiva (tab). Il markup è lo stesso delle tre sezioni stacked.
+  var html = '';
+  if (state.homeTab === 'artwork' || state.homeTab === 'all') {
+    html += homeTypeHeader('L’opera', state.list.length, 'artwork');
+    if (state.list.length === 0) {
+      html += '<p class="step-note" style="margin-bottom:8px">Nessun dipinto: carica l’immagine di un’opera per crearne la scheda didattica.</p>';
+    } else {
+      html += '<div class="grid-artworks">';
+      state.list.forEach(function (a) {
+        html += '<div class="aw-card"><div class="thumb"><span class="badge ' + (a.status === 'ready' ? 'ready' : '') + '">' + (a.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span>' +
+          (a.imageUrl ? '<img src="' + esc(a.imageUrl) + '" alt="" />' : '') + '</div>' +
+          '<div class="body"><h3>' + esc(a.title || 'Senza titolo') + '</h3><p>' + esc(a.artist || '') + (a.date ? ' · ' + esc(a.date) : '') + '</p></div>' +
+          '<div class="actions"><button class="btn small" data-open="' + esc(a.id) + '">Modifica</button>' +
+          (a.status === 'ready' ? '<button class="btn small primary" data-view="' + esc(a.id) + '">Vedi</button>' : '') +
+          '<button class="btn small ghost" data-del="' + esc(a.id) + '">Elimina</button></div></div>';
+      });
+      html += '</div>';
+    }
+  }
+  if (state.homeTab === 'subject' || state.homeTab === 'all') {
+    html += homeTypeHeader('Il soggetto', state.subjects.length, 'subject');
+    if (!state.subjects.length) {
+      html += '<p class="step-note" style="margin-bottom:8px">Nessun soggetto: crea una scheda che racconta come uno stesso soggetto è stato dipinto nei secoli.</p>';
+    } else {
+      html += '<div class="grid-artworks">';
+      state.subjects.forEach(function (s) {
+        html += '<div class="subj-card"><span class="s-ico">' + esc((s.name || '?').charAt(0)) + '</span>' +
+          '<span class="badge ' + (s.status === 'ready' ? 'ready' : '') + '" style="position:static;align-self:flex-start">' + (s.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span>' +
+          '<h3>' + esc(s.name) + '</h3>' +
+          '<p>' + esc(s.shortDesc || 'Scheda monografica sul soggetto nella storia dell’arte.') + '</p>' +
+          '<div class="actions"><button class="btn small" data-open-subject="' + esc(s.id) + '">Modifica</button>' +
+          (s.status === 'ready' ? '<button class="btn small primary" data-view-subject="' + esc(s.id) + '">Vedi</button>' : '') +
+          '<button class="btn small ghost" data-del-subject="' + esc(s.id) + '">Elimina</button></div></div>';
+      });
+      html += '</div>';
+    }
+  }
+  if (state.homeTab === 'comparison' || state.homeTab === 'all') {
+    html += homeTypeHeader('Il confronto', state.comparisons.length, 'comparison');
+    if (!state.comparisons.length) {
+      html += '<p class="step-note" style="margin-bottom:8px">Nessun confronto: metti a paragone due opere (stesso soggetto o stesso artista).</p>';
+    } else {
+      html += '<div class="grid-artworks">';
+      state.comparisons.forEach(function (c) {
+        html += '<div class="aw-card"><div class="thumb">' +
+          (c.hasThumb ? '<img class="cmp-thumb" src="/api/comparisons/' + esc(c.id) + '/thumb" alt="" />' : '<div class="sim-ph">🖼 composita non ancora generata</div>') +
+          '<span class="badge ' + (c.status === 'ready' ? 'ready' : '') + '">' + (c.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span></div>' +
+          '<div class="body"><h3>' + esc(c.title || 'Confronto') + '</h3><p>' + (c.comparisonType === 'same-artist' ? 'stesso artista, fasi diverse' : 'stesso soggetto, artisti diversi') + '</p></div>' +
+          '<div class="actions"><button class="btn small" data-open-comparison="' + esc(c.id) + '">Modifica</button>' +
+          (c.status === 'ready' ? '<button class="btn small primary" data-view-comparison="' + esc(c.id) + '">Vedi</button>' : '') +
+          '<button class="btn small ghost" data-del-comparison="' + esc(c.id) + '">Elimina</button></div></div>';
+      });
+      html += '</div>';
+    }
+  }
+  return html;
 }
 function renderHome() {
-  var html = topbar('schede didattiche',
+  var html = topbar('',
     '<button class="btn primary small" data-nav="new">+ Nuova opera</button>' +
     '<button class="btn small" data-nav="new-subject">+ Nuovo soggetto</button>' +
     '<button class="btn small" data-nav="new-comparison">+ Nuovo confronto</button>');
   html += '<h1 class="page-title">Crea le schede didattiche</h1>';
   html += '<p class="lead">Tre tipi di scheda: il singolo dipinto, un soggetto nella storia dell’arte, oppure un confronto “faccia a faccia” tra due opere. L’intelligenza artificiale propone i contenuti, tu controlli, correggi e salvi.</p>';
-
-  html += homeTypeHeader('Dipinti', state.list.length);
-  if (state.list.length === 0) {
-    html += '<p class="step-note" style="margin-bottom:8px">Nessun dipinto: carica l’immagine di un’opera per crearne la scheda didattica.</p>';
-  } else {
-    html += '<div class="grid-artworks">';
-    state.list.forEach(function (a) {
-      html += '<div class="aw-card"><div class="thumb"><span class="badge ' + (a.status === 'ready' ? 'ready' : '') + '">' + (a.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span>' +
-        (a.imageUrl ? '<img src="' + esc(a.imageUrl) + '" alt="" />' : '') + '</div>' +
-        '<div class="body"><h3>' + esc(a.title || 'Senza titolo') + '</h3><p>' + esc(a.artist || '') + (a.date ? ' · ' + esc(a.date) : '') + '</p></div>' +
-        '<div class="actions"><button class="btn small" data-open="' + esc(a.id) + '">Modifica</button>' +
-        (a.status === 'ready' ? '<button class="btn small primary" data-view="' + esc(a.id) + '">Vedi</button>' : '') +
-        '<button class="btn small ghost" data-del="' + esc(a.id) + '">Elimina</button></div></div>';
-    });
-    html += '</div>';
-  }
-
-  html += homeTypeHeader('Soggetti nella storia dell’arte', state.subjects.length);
-  if (!state.subjects.length) {
-    html += '<p class="step-note" style="margin-bottom:8px">Nessun soggetto: crea una scheda che racconta come uno stesso soggetto è stato dipinto nei secoli.</p>';
-  } else {
-    html += '<div class="grid-artworks">';
-    state.subjects.forEach(function (s) {
-      html += '<div class="subj-card"><span class="s-ico">' + esc((s.name || '?').charAt(0)) + '</span>' +
-        '<span class="badge ' + (s.status === 'ready' ? 'ready' : '') + '" style="position:static;align-self:flex-start">' + (s.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span>' +
-        '<h3>' + esc(s.name) + '</h3>' +
-        '<p>' + esc(s.shortDesc || 'Scheda monografica sul soggetto nella storia dell’arte.') + '</p>' +
-        '<div class="actions"><button class="btn small" data-open-subject="' + esc(s.id) + '">Modifica</button>' +
-        (s.status === 'ready' ? '<button class="btn small primary" data-view-subject="' + esc(s.id) + '">Vedi</button>' : '') +
-        '<button class="btn small ghost" data-del-subject="' + esc(s.id) + '">Elimina</button></div></div>';
-    });
-    html += '</div>';
-  }
-
-  html += homeTypeHeader('Faccia a faccia', state.comparisons.length);
-  if (!state.comparisons.length) {
-    html += '<p class="step-note" style="margin-bottom:8px">Nessun confronto: metti a paragone due opere (stesso soggetto o stesso artista).</p>';
-  } else {
-    html += '<div class="grid-artworks">';
-    state.comparisons.forEach(function (c) {
-      html += '<div class="aw-card"><div class="thumb">' +
-        (c.hasThumb ? '<img class="cmp-thumb" src="/api/comparisons/' + esc(c.id) + '/thumb" alt="" />' : '<div class="sim-ph">🖼 composita non ancora generata</div>') +
-        '<span class="badge ' + (c.status === 'ready' ? 'ready' : '') + '">' + (c.status === 'ready' ? 'pronta' : 'in lavorazione') + '</span></div>' +
-        '<div class="body"><h3>' + esc(c.title || 'Confronto') + '</h3><p>' + (c.comparisonType === 'same-artist' ? 'stesso artista, fasi diverse' : 'stesso soggetto, artisti diversi') + '</p></div>' +
-        '<div class="actions"><button class="btn small" data-open-comparison="' + esc(c.id) + '">Modifica</button>' +
-        (c.status === 'ready' ? '<button class="btn small primary" data-view-comparison="' + esc(c.id) + '">Vedi</button>' : '') +
-        '<button class="btn small ghost" data-del-comparison="' + esc(c.id) + '">Elimina</button></div></div>';
-    });
-    html += '</div>';
-  }
+  // Filtri a tab come nel catalogo di artest: «Tutte» + una voce per tipo, con contatore.
+  var tabs = [
+    ['all', 'Tutte', state.list.length + state.subjects.length + state.comparisons.length],
+    ['artwork', 'L’opera', state.list.length],
+    ['subject', 'Il soggetto', state.subjects.length],
+    ['comparison', 'Il confronto', state.comparisons.length]
+  ];
+  html += '<div class="home-tabs" role="tablist">';
+  tabs.forEach(function (t) {
+    html += '<button class="home-tab' + (state.homeTab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '" role="tab" aria-selected="' + (state.homeTab === t[0]) + '">' +
+      esc(t[1]) + '<span class="tab-count">' + t[2] + '</span></button>';
+  });
+  html += '</div>';
+  html += '<div id="homeSection">';
+  html += homeSectionBody();
+  html += '</div>';
   appEl.innerHTML = html;
+  state.homeSectionEl = document.getElementById('homeSection');
 }
 
 /* ---------- studio (nuova opera + workspace) ---------- */
@@ -452,7 +514,7 @@ var studio = null;
 function renderStudio() {
   if (!studio) { studio = new StudioView(); }
   var s = studio;
-  var html = topbar(s.artworkId ? 'workspace' : 'nuova opera', s.artworkId ? '<button class="btn small" data-nav="home">← Elenco</button>' : '');
+  var html = topbar('', s.artworkId ? '<button class="btn small" data-nav="home">← Elenco</button>' : '');
   html += '<h1 class="page-title">' + (s.artworkId ? 'Genera la scheda didattica' : 'Nuova opera') + '</h1>';
   html += '<p class="lead">' + (s.artworkId ? 'Rivedi i contenuti proposti dall’AI, correggi se serve e premi “Salva nel database”.' : 'Carica l’immagine del dipinto. Tutto il resto — scheda, dettagli, sezioni — lo propone l’intelligenza artificiale.') + '</p>';
   html += '<div id="pipelineWrap">' + pipelineCardHtml() + '</div>';
@@ -1896,7 +1958,7 @@ function pipeCancel() {
 /* ---------- viewer ---------- */
 function openViewer(id) { state.view = 'viewer'; state.viewerId = id; render(); }
 function renderViewer() {
-  var html = topbar('anteprima didattica', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');
@@ -1905,7 +1967,7 @@ function renderViewer() {
     if (!full.overview) {
       // Scheda vuota: si mantiene comunque la topbar con ⬇ PDF (il click
       // mostra il messaggio "Genera e salva prima i contenuti") e ← Elenco.
-      appEl.innerHTML = topbar('anteprima didattica', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>')
+      appEl.innerHTML = topbar('', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/artworks/\' + state.viewerId + \'/pdf\', \'scheda-opera.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>')
         + '<div class="empty-state"><h2>Opera non pronta</h2><p>Genera e salva prima i contenuti.</p></div>';
       var back = appEl.querySelector('[data-nav]');
       if (back) back.onclick = function () { state.view = 'home'; refreshList(); };
@@ -2000,6 +2062,19 @@ function bindViewer(full) {
 }
 function bindGlobal() {
   appEl.addEventListener('click', function (e) {
+    var tab = e.target.closest('[data-tab]');
+    if (tab) {
+      e.preventDefault();
+      var t = tab.getAttribute('data-tab');
+      if (t === 'all' || t === 'artwork' || t === 'subject' || t === 'comparison') {
+        if (state.homeTab === t) return;
+        state.homeTab = t;
+        state.homeRedraw = true;
+        render();
+        state.homeRedraw = false;
+      }
+      return;
+    }
     var nav = e.target.closest('[data-nav]');
     if (nav) {
       e.preventDefault();
@@ -2095,7 +2170,7 @@ function renderSubjectStudio() {
   var s = subjectStudio;
   if (!s) { s = subjectStudio = new SubjectStudioView(); }
   var isNew = !s.id;
-  var html = topbar('scheda soggetto', '<button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('', '<button class="btn small" data-nav="home">← Elenco</button>');
   html += '<h1 class="page-title">' + (isNew ? 'Nuovo soggetto' : 'Soggetto nella storia dell’arte') + '</h1>';
   html += '<p class="lead">' + (isNew
     ? 'Inserisci il nome del soggetto (es. “Annunciazione”, “Natività”, “Battaglia navale”): l’intelligenza artificiale ricostruisce l’evoluzione pittorico-artistica del soggetto tra artisti ed epoche.'
@@ -2347,7 +2422,7 @@ var comparisonStudio = null;
 function renderComparisonStudio() {
   var s = comparisonStudio;
   if (!s) { s = comparisonStudio = new ComparisonStudioView(); }
-  var html = topbar('faccia a faccia', '<button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('', '<button class="btn small" data-nav="home">← Elenco</button>');
   html += '<h1 class="page-title">Faccia a faccia</h1>';
   if (s.step === 'sides') html += renderSidesStep(s);
   else html += renderComparisonEditor(s);
@@ -2632,7 +2707,7 @@ function removeComparison(id) {
 
 /* ================= viewer SOGGETTO ================= */
 function renderSubjectViewer() {
-  var html = topbar('anteprima · soggetto', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/subjects/\' + state.viewerSubjectId + \'/pdf\', \'scheda-soggetto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/subjects/\' + state.viewerSubjectId + \'/pdf\', \'scheda-soggetto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');
@@ -2681,7 +2756,7 @@ function renderSubjectViewer() {
 
 /* ================= viewer FACCIA A FACCIA ================= */
 function renderComparisonViewer() {
-  var html = topbar('anteprima · faccia a faccia', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/comparisons/\' + state.viewerComparisonId + \'/pdf\', \'scheda-confronto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
+  var html = topbar('', '<button class="btn small" data-pdf onclick="downloadPdf(\'/api/comparisons/\' + state.viewerComparisonId + \'/pdf\', \'scheda-confronto.pdf\')">⬇ PDF</button><button class="btn small" data-nav="home">← Elenco</button>');
   html += '<div id="viewerBody"><div class="empty-state"><span class="spinner"></span> Caricamento…</div></div>';
   appEl.innerHTML = html;
   var b = appEl.querySelector('[data-nav]');

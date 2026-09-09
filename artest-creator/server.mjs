@@ -523,8 +523,10 @@ function handleApi(req, res, urlPath) {
     return json(res, 200, { ok: true, published });
   }
 
-  // GET /api/artworks/:id/pdf — PDF "libro d'arte" della scheda opera
-  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'pdf') {
+  // GET|HEAD /api/artworks/:id/pdf — PDF "libro d'arte" della scheda opera
+  // (HEAD: Node scarta il body ma mantiene le stesse intestazioni del GET,
+  //  così Content-Length e Content-Disposition coincidono col download reale)
+  if ((method === 'GET' || method === 'HEAD') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'artworks' && parts[3] === 'pdf') {
     const full = getFullArtwork(parts[2]);
     if (!full) return err(res, 404, 'Opera non trovata');
     if (!full.overview && !(full.details || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
@@ -668,8 +670,8 @@ function handleApi(req, res, urlPath) {
     res.writeHead(200, { 'Content-Type': img.mime, 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return res.end(buf);
   }
-  // GET /api/subjects/:id/pdf — PDF "libro d'arte" della scheda soggetto
-  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'pdf') {
+  // GET|HEAD /api/subjects/:id/pdf — PDF "libro d'arte" della scheda soggetto
+  if ((method === 'GET' || method === 'HEAD') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'subjects' && parts[3] === 'pdf') {
     const full = getFullSubject(parts[2]);
     if (!full) return err(res, 404, 'Soggetto non trovato');
     if (!full.intro && !full.origins && !(full.chapters || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
@@ -834,8 +836,8 @@ function handleApi(req, res, urlPath) {
     res.writeHead(200, { 'Content-Type': row.thumb_mime || 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return res.end(buf);
   }
-  // GET /api/comparisons/:id/pdf — PDF "libro d'arte" della scheda confronto
-  if (method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'pdf') {
+  // GET|HEAD /api/comparisons/:id/pdf — PDF "libro d'arte" della scheda confronto
+  if ((method === 'GET' || method === 'HEAD') && parts.length === 4 && parts[0] === 'api' && parts[1] === 'comparisons' && parts[3] === 'pdf') {
     const full = getFullComparison(parts[2]);
     if (!full) return err(res, 404, 'Confronto non trovato');
     if (!full.intro && !(full.points || []).length) return err(res, 400, 'Genera e salva prima i contenuti: il PDF esporta la scheda completa.');
@@ -1401,6 +1403,16 @@ async function renderComposeThumb(comparison) {
 }
 
 // ---------- static + avvio ----------
+// URL dell'hub per il bottone «← Hub» della UI: porta letta da ARTEST_HUB_PORT
+// (default 18080, come launcher.mjs), host preso dalla richiesta in modo che il
+// link funzioni anche in LAN. Iniettato sostituendo il segnaposto <!--APP_CONFIG-->.
+function hubUrlFor(req) {
+  const hostHeader = String((req && req.headers && req.headers.host) || '').trim();
+  const hostname = hostHeader.split(':')[0] || '127.0.0.1';
+  const hubPort = Number(process.env.ARTEST_HUB_PORT || 18080);
+  return `http://${hostname}:${hubPort}/`;
+}
+
 async function serveStatic(req, res, urlPath) {
   const requestPath = urlPath === '/' ? '/index.html' : urlPath;
   const filePath = resolve(PUBLIC_DIR, `.${normalize(requestPath)}`);
@@ -1410,7 +1422,12 @@ async function serveStatic(req, res, urlPath) {
     if (!info.isFile()) throw new Error();
     const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json' };
     res.writeHead(200, { 'Content-Type': types[extname(filePath)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
-    res.end(await readFile(filePath));
+    let body = await readFile(filePath);
+    if (extname(filePath) === '.html') {
+      const configScript = `<script>window.CREATOR_DATA = Object.assign(window.CREATOR_DATA || {}, { hubUrl: ${JSON.stringify(hubUrlFor(req))} });</script>`;
+      body = Buffer.from(body.toString('utf8').replace('<!--APP_CONFIG-->', configScript));
+    }
+    res.end(body);
   } catch {
     res.writeHead(404); res.end('Not Found');
   }

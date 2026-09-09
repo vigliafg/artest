@@ -4,6 +4,10 @@ Viewer didattico React per esplorare opere d’arte **dettaglio per dettaglio**.
 
 ## Architettura
 
+> 📘 **Documentazione di riferimento delle pipeline** (hub, artest, artest-creator):
+> vedi **`ARCHITETTURA-PIPELINE.md`** — descrizione stabile dei flussi, delle
+> decisioni architetturali e degli endpoint di ciascun componente.
+
 - `index.html`: entry point browser e UI React compilata in-browser per questa workspace.
 - `src/styles.css`: fogli di stile principali (tabs, carosello opere simili, pannelli).
 - `src/components/`: componenti React per catalogo, viewer, pannello di lettura e schermata di esplorazione.
@@ -157,6 +161,10 @@ launcher sia acceso e il pallino sia verde; porta occupata → cambia le porte i
 ⚙️ Opzioni; libreria vuota nel viewer → nessuna scheda ancora pubblicata dal
 creator (vedi flusso sopra).
 
+Ogni programma ha un bottone **«← Hub»** nella propria home per tornare alla
+pagina iniziale del launcher (viewer: in alto a destra; creator: nella barra in
+alto di ogni pagina).
+
 Il modello lavora dalla propria conoscenza di addestramento: osserva il dettaglio e integra nella spiegazione i fatti che già conosce sull’opera. Il grounding web di OpenRouter è **disattivato di default**; per attivarlo impostare `OPENROUTER_WEB_SEARCH=true` (in quel caso il backend aggiunge il plugin di ricerca web alla richiesta e le citazioni restituite vengono mostrate tra le fonti).
 
 ## Modello scelto
@@ -199,18 +207,12 @@ I flussi sotto restano disponibili e vengono usati solo quando un’opera non ha
 
 L’immagine non viene inviata direttamente dal browser a OpenRouter e la chiave non viene esposta al client.
 
-## Configuratore grafico della chiave Windows
+## Configurazione della chiave API
 
-È disponibile `setup_nvidia_key.py`, un mini-programma Tkinter che chiede la chiave senza stamparla e la salva in `HKCU\\Environment` come `NVIDIA_API_KEY`. Non crea file `.env` e non richiede privilegi amministrativi.
-
-Avvio su Windows con Python installato:
-
-```powershell
-python setup_nvidia_key.py
-```
-
-Dopo il salvataggio chiudi e riapri il terminale, poi esegui `node server.mjs`. Per rimuovere la chiave è disponibile il pulsante **Rimuovi chiave**.
-
+La chiave si configura in due modi, entrambi già documentati nella sezione
+Installazione: dal pannello **⚙️ Opzioni dell'hub** (`node launcher.mjs`, scrive
+`OPENROUTER_API_KEY` in `.env.local` e riavvia i due server) oppure modificando
+direttamente il file `.env.local` alla radice del repo.
 ## Test
 
 Eseguire i test Node integrati:

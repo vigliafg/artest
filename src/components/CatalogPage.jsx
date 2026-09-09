@@ -39,19 +39,55 @@ function ComparisonCard({ card, onOpen }) {
   );
 }
 
+function TypeSectionHead({ title, count }) {
+  return (
+    <div className="type-section-head">
+      <div>
+        <h3 className="type-title">{title}</h3>
+        <p className="type-desc">{count === 1 ? 'Una scheda nella collezione' : count + ' schede nella collezione'}</p>
+      </div>
+      <span className="type-tag">{count}</span>
+    </div>
+  );
+}
+
 function CatalogPage({ cards, onOpen }) {
   const [query, setQuery] = React.useState('');
-  const [type, setType] = React.useState('Tutti');
-  const artworks = (cards || []).filter(function (card) { return !card.cardType || card.cardType === 'artwork'; });
-  const hero = artworks[0] || (cards || [])[0] || null;
-  const types = ['Tutti', 'Dipinti', 'Soggetti', 'Confronti'];
-  const filtered = (cards || []).filter(function (card) {
-    const isSubject = card.cardType === 'subject';
-    const isComparison = card.cardType === 'comparison';
-    const matchesType = type === 'Tutti' || (type === 'Dipinti' && !card.cardType) || (type === 'Soggetti' && isSubject) || (type === 'Confronti' && isComparison);
-    const text = ((card.title || '') + ' ' + (card.artist || '') + ' ' + (card.period || '') + ' ' + (card.shortDesc || '')).toLowerCase();
-    return matchesType && text.includes(query.toLowerCase());
-  });
+  const [type, setType] = React.useState('Tutte');
+  const hero = (cards || [])[0] || null;
+  const needle = query.toLowerCase();
+
+  // Tre sezioni logiche della collezione, una per tipo di scheda.
+  const sections = [
+    {
+      key: 'artwork', title: 'L’opera', filterKey: 'Dipinti',
+      items: (cards || []).filter(function (card) { return !card.cardType || card.cardType === 'artwork'; }),
+      render: function (card) { return <ArtworkCard key={card.id} artwork={card} onOpen={onOpen} />; }
+    },
+    {
+      key: 'subject', title: 'Il soggetto', filterKey: 'Soggetti',
+      items: (cards || []).filter(function (card) { return card.cardType === 'subject'; }),
+      render: function (card) { return <SubjectCard key={card.id} card={card} onOpen={onOpen} />; }
+    },
+    {
+      key: 'comparison', title: 'Il confronto', filterKey: 'Confronti',
+      items: (cards || []).filter(function (card) { return card.cardType === 'comparison'; }),
+      render: function (card) { return <ComparisonCard key={card.id} card={card} onOpen={onOpen} />; }
+    }
+  ];
+
+  // Il filtro per tipo mostra/nasconde intere sezioni; la ricerca filtra dentro ciascuna.
+  const visible = sections
+    .filter(function (section) { return type === 'Tutte' || type === section.filterKey; })
+    .map(function (section) {
+      const items = section.items.filter(function (card) {
+        const text = ((card.title || '') + ' ' + (card.artist || '') + ' ' + (card.period || '') + ' ' + (card.shortDesc || '')).toLowerCase();
+        return text.includes(needle);
+      });
+      return { key: section.key, title: section.title, items: items, render: section.render };
+    })
+    .filter(function (section) { return section.items.length > 0; });
+  const total = visible.reduce(function (sum, section) { return sum + section.items.length; }, 0);
 
   return (
     <main className="catalog-page">
@@ -73,14 +109,30 @@ function CatalogPage({ cards, onOpen }) {
 
       <section className="catalog-section" id="catalogo">
         <div className="section-heading"><div><span className="eyebrow">La collezione</span><h2>Inizia da un’opera.</h2></div><p>Schede didattiche: dipinti, soggetti nella storia dell’arte e confronti “faccia a faccia”.</p></div>
-        <div className="catalog-tools"><label className="search-field"><Icon name="search" size={18} /><span className="sr-only">Cerca nell’elenco</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca artista, opera o soggetto…" /></label>
-          <label className="filter-field"><span className="sr-only">Filtra per tipo</span><select value={type} onChange={(event) => setType(event.target.value)}>{types.map((item) => <option key={item}>{item}</option>)}</select><Icon name="chevron" size={16} /></label></div>
-        <div className="catalog-grid">{filtered.map(function (card) {
-          if (card.cardType === 'subject') return <SubjectCard key={card.id} card={card} onOpen={onOpen} />;
-          if (card.cardType === 'comparison') return <ComparisonCard key={card.id} card={card} onOpen={onOpen} />;
-          return <ArtworkCard key={card.id} artwork={card} onOpen={onOpen} />;
-        })}</div>
-        {filtered.length === 0 && <div className="catalog-empty"><Icon name="search" size={24} /><h3>Nessuna scheda trovata</h3><p>Prova a cambiare la ricerca o il filtro.</p></div>}
+        <div className="catalog-tools"><label className="search-field"><Icon name="search" size={18} /><span className="sr-only">Cerca nell’elenco</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cerca artista, opera o soggetto…" /></label></div>
+        <div className="catalog-tabs" role="tablist" aria-label="Filtra la collezione per tipo">
+          {[
+            ['Tutte', (cards || []).length],
+            ['Dipinti', sections[0].items.length],
+            ['Soggetti', sections[1].items.length],
+            ['Confronti', sections[2].items.length]
+          ].map(function (tab) {
+            return (
+              <button key={tab[0]} type="button" role="tab" aria-selected={type === tab[0]} className={'catalog-tab' + (type === tab[0] ? ' active' : '')} onClick={() => setType(tab[0])}>
+                {tab[0]}<span className="tab-count">{tab[1]}</span>
+              </button>
+            );
+          })}
+        </div>
+        {visible.map(function (section) {
+          return (
+            <div className="type-section" key={section.key}>
+              <TypeSectionHead title={section.title} count={section.items.length} />
+              <div className="catalog-grid">{section.items.map(section.render)}</div>
+            </div>
+          );
+        })}
+        {total === 0 && <div className="catalog-empty"><Icon name="search" size={24} /><h3>Nessuna scheda trovata</h3><p>Prova a cambiare la ricerca o il filtro.</p></div>}
       </section>
     </main>
   );

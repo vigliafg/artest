@@ -40,8 +40,6 @@ a { color: inherit; }
 .site-header nav { display: flex; gap: 30px; margin-left: auto; margin-right: 20px; }
 .site-header nav a { color: var(--muted); font-size: 13px; text-decoration: none; transition: color .2s ease; }
 .site-header nav a:hover { color: var(--ink); }
-.header-pill { border: 1px solid var(--line); padding: 9px 13px; border-radius: 30px; color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-.header-pill .icon { color: var(--coral); }
 
 .hero-section { max-width: 1240px; min-height: 560px; margin: 0 auto; padding: 65px 40px 100px; display: grid; grid-template-columns: 1.03fr .97fr; align-items: center; gap: 65px; position: relative; overflow: hidden; }
 .hero-copy { position: relative; z-index: 1; padding-bottom: 20px; }
@@ -166,16 +164,6 @@ h1, h2 { font-family: 'Playfair Display', Georgia, serif; letter-spacing: -.055e
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .config-button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 30px; padding: 9px 12px; font-size: 10px; cursor: pointer; }
 .config-button:hover { color: var(--ink); border-color: var(--ink); }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(15, 41, 61, .42); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 20; }
-.config-modal { width: min(100%, 460px); position: relative; background: var(--white); border-radius: 18px; padding: 28px; box-shadow: 0 24px 70px rgba(15,41,61,.25); color: var(--ink); }
-.modal-close { position: absolute; right: 17px; top: 17px; border: 0; background: transparent; color: var(--muted); padding: 5px; }
-.config-modal h2 { font-size: 30px; margin: 14px 0 9px; }
-.config-modal > p { color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 16px; }
-.config-status { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--paper); font-size: 11px; margin-bottom: 13px; }
-.config-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-.config-status.configured { color: #47717c; }.config-status.configured span { background: #628f80; }.config-status.missing span { background: var(--coral); }
-.command-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--ink-deep); color: #fff; padding: 12px; border-radius: 5px; }.command-box code { font-size: 11px; overflow-wrap: anywhere; }.command-box button { border: 1px solid rgba(255,255,255,.35); background: transparent; color: #fff; border-radius: 4px; padding: 6px 8px; font-size: 9px; white-space: nowrap; }
-.config-modal ol { padding-left: 20px; color: var(--muted); font-size: 11px; line-height: 1.8; margin: 17px 0; }.config-modal li code { background: var(--paper); padding: 2px 4px; color: var(--ink); }.modal-action { width: 100%; }
 
 @keyframes pulse { 0%, 100% { transform: scale(.94); opacity: .65; } 50% { transform: scale(1.06); opacity: 1; } }
 @keyframes blink { to { opacity: .25; transform: translateY(-3px); } }
@@ -193,7 +181,7 @@ h1, h2 { font-family: 'Playfair Display', Georgia, serif; letter-spacing: -.055e
   .empty-analysis, .analysis-loading { min-height: 270px; }
 }
 @media (max-width: 640px) {
-  .site-header { height: 72px; padding-left: 18px; padding-right: 18px; }.header-pill, .config-button { display: none; }
+  .site-header { height: 72px; padding-left: 18px; padding-right: 18px; }.config-button { display: none; }
   .hero-section { min-height: auto; padding: 56px 22px 75px; display: flex; flex-direction: column; align-items: stretch; gap: 48px; }.hero-copy h1 { font-size: 52px; }.hero-copy > p { font-size: 14px; }.hero-art { width: 88%; align-self: center; }.hero-frame { height: 330px; }.hero-scribble { right: -25px; bottom: 52px; }
   .catalog-section { padding: 60px 18px 70px; }.section-heading { display: block; }.section-heading h2 { font-size: 38px; margin-bottom: 16px; }.section-heading > p { max-width: 340px; }.catalog-tools { flex-wrap: wrap; }.search-field { width: 100%; }.filter-field { width: 100%; }.filter-field select { width: 100%; }.catalog-grid { gap: 26px 12px; }.card-image-wrap { height: 185px; }.card-copy h3 { font-size: 18px; }.card-copy p { font-size: 10px; }
   .site-footer { padding: 30px 18px 38px; display: block; }.site-footer p { text-align: left; margin: 18px 0; }.footer-meta { justify-content: flex-start; flex-wrap: wrap; }
@@ -313,3 +301,20 @@ h1, h2 { font-family: 'Playfair Display', Georgia, serif; letter-spacing: -.055e
 .pt-item strong{display:block;font-size:13px;color:var(--ink);margin-bottom:4px}
 .pt-item p{margin:0;color:var(--ink);font-size:12px;line-height:1.65}
 @media(max-width:640px){.cmp-sides{grid-template-columns:1fr}.sym-def-item{display:block}.sym-def-item strong{margin-bottom:3px}}
+
+/* ---------- catalogo: sezioni per tipo di scheda (opera / soggetto / confronto) ---------- */
+.type-section{margin-top:46px}
+.type-section:first-of-type{margin-top:0}
+.type-section-head{display:flex;justify-content:space-between;align-items:end;gap:24px;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:22px}
+.type-title{margin:0;font-size:26px}
+.type-desc{margin:5px 0 0;color:var(--muted);font-size:11px}
+.type-tag{flex-shrink:0;border:1px solid var(--line);background:var(--paper);color:var(--muted);border-radius:30px;padding:6px 12px;font-size:11px;font-weight:700;white-space:nowrap}
+
+/* ---------- catalogo: riga di tab filtro (come nella home del creator) ---------- */
+.catalog-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 26px}
+.catalog-tab{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--white);color:var(--ink);border-radius:30px;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.catalog-tab:hover{border-color:var(--coral);background:#fff9f5}
+.catalog-tab.active{border-color:var(--coral);background:var(--coral);color:#fff}
+.catalog-tab .tab-count{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--paper);color:var(--muted);font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+.catalog-tab.active .tab-count{background:rgba(255,255,255,.25);color:#fff}
+@media(max-width:640px){.type-section{margin-top:36px}.type-title{font-size:22px}.type-section-head{align-items:start}}

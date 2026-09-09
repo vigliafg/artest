@@ -1,32 +1,9 @@
-function KeyConfigModal({ onClose }) {
-  const [status, setStatus] = React.useState('checking');
-  const command = 'python setup_nvidia_key.py';
-
-  React.useEffect(() => {
-    fetch('/api/status')
-      .then((response) => response.json())
-      .then((data) => setStatus(data.configured ? 'configured' : 'missing'))
-      .catch(() => setStatus('unknown'));
-  }, []);
-
-  function copyCommand() {
-    navigator.clipboard?.writeText(command);
-  }
-
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="config-modal" role="dialog" aria-modal="true" aria-labelledby="config-title">
-        <button className="modal-close" onClick={onClose} aria-label="Chiudi configurazione"><Icon name="close" size={18} /></button>
-        <span className="ai-mark"><Icon name="sparkle" size={15} /> CONFIGURAZIONE SICURA</span>
-        <h2 id="config-title">Collega l’analisi AI</h2>
-        <p>La chiave non viene inserita nella pagina web. Usa il configuratore Tkinter per salvarla nell’ambiente utente di Windows.</p>
-        <div className={'config-status ' + status}><span></span>{status === 'configured' ? 'Chiave configurata' : status === 'missing' ? 'Chiave non ancora configurata' : status === 'checking' ? 'Controllo in corso…' : 'Stato non disponibile'}</div>
-        <div className="command-box"><code>{command}</code><button onClick={copyCommand}>Copia</button></div>
-        <ol><li>Avvia il comando in PowerShell.</li><li>Inserisci la chiave e premi <strong>Salva chiave</strong>.</li><li>Riapri il terminale e riavvia <code>node server.mjs</code>.</li></ol>
-        <button className="secondary-button modal-action" onClick={onClose}>Ho capito</button>
-      </section>
-    </div>
-  );
+// URL dell'hub lanciato da launcher.mjs: iniettato dal server come APP_DATA.hubUrl,
+// con fallback calcolato sulla stessa porta default del launcher (ARTEST_HUB_PORT).
+function hubUrl() {
+  const injected = window.APP_DATA && window.APP_DATA.hubUrl;
+  if (injected) return injected;
+  return 'http://' + (location.hostname || '127.0.0.1') + ':18080/';
 }
 
 function App() {
@@ -34,7 +11,6 @@ function App() {
   const [activeArtwork, setActiveArtwork] = React.useState(null);  // scheda dipinto completa
   const [activeSubject, setActiveSubject] = React.useState(null);  // scheda soggetto completa
   const [activeComparison, setActiveComparison] = React.useState(null); // scheda confronto completa
-  const [configOpen, setConfigOpen] = React.useState(false);
   const [cards, setCards] = React.useState(null);
   const [libraryStatus, setLibraryStatus] = React.useState('loading');
   const [openingId, setOpeningId] = React.useState(null);
@@ -119,7 +95,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      {showCatalog && <header className="site-header"><a href="#top" className="brand" onClick={(event) => { event.preventDefault(); backHome(); }}><span className="brand-mark"><i></i><i></i><i></i></span><span>leggi l’<strong>opera</strong></span></a><nav><a href="#catalogo">La collezione</a><a href="#metodo">Come funziona</a></nav><div className="header-actions"><button className="config-button" onClick={() => setConfigOpen(true)}><Icon name="info" size={14} /> Configura chiave</button><span className="header-pill">Esperienza didattica <Icon name="sparkle" size={14} /></span></div></header>}
+      {showCatalog && <header className="site-header"><a href="#top" className="brand" onClick={(event) => { event.preventDefault(); backHome(); }}><span className="brand-mark"><i></i><i></i><i></i></span><span>leggi l’<strong>opera</strong></span></a><nav><a href="#catalogo">La collezione</a><a href="#metodo">Come funziona</a></nav><div className="header-actions"><button className="config-button hub-button" onClick={() => { location.href = hubUrl(); }} title="Torna all'hub di Artest"><span>←</span> Hub</button></div></header>}
       {showCatalog && libraryStatus === 'loading' && (
         <main className="catalog-page"><section className="catalog-section" style={{ textAlign: 'center', paddingTop: 120 }}><div className="loading-orbit" style={{ margin: '0 auto 22px' }}><span></span><span></span><span></span></div><h2 style={{ fontFamily: 'Playfair Display, Georgia, serif' }}>Carico la collezione…</h2></section></main>
       )}
@@ -146,7 +122,6 @@ function App() {
       {activeSubject && <SubjectView subject={activeSubject} onBack={backHome} />}
       {activeComparison && <ComparisonView comparison={activeComparison} onBack={backHome} />}
       {showCatalog && <footer className="site-footer" id="metodo"><div className="footer-brand"><span className="brand-mark"><i></i><i></i><i></i></span><span>leggi l’<strong>opera</strong></span></div><p>Un invito a guardare con più attenzione.</p><div className="footer-meta"><span>Progetto educativo · 2026</span><span>Realizzato per imparare dall’arte</span></div></footer>}
-      {configOpen && <KeyConfigModal onClose={() => setConfigOpen(false)} />}
     </div>
   );
 }
