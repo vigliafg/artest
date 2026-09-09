@@ -110,9 +110,52 @@ node server.mjs
 ### Verifica
 
 ```bash
-node --test test_server.mjs                  # 36 test
+node --test test_server.mjs                  # 40 test
 curl http://127.0.0.1:18100/api/status        # configured:true se la chiave è letta
 ```
+
+## Guida veloce per l'utente
+
+### L'hub (http://127.0.0.1:18080)
+
+È la pagina iniziale: si apre con `node launcher.mjs` e resta accesa finché
+lavori (`Ctrl+C` per spegnere tutto). Contiene:
+
+- **Due grossi bottoni**:
+  - **Vedi le schede di Artest** → apre il viewer (:18000), dove si leggono le
+    schede didattiche già pronte (opere, soggetti, faccia a faccia);
+  - **Crea le schede di Artest** → apre il creator (:18100), dove si generano
+    nuove schede con l'aiuto dell'AI.
+- **Il pallino** accanto a ogni bottone dice se quel programma è acceso (verde)
+  o spento (rosso): se si spegne, l'hub lo riavvia da solo, basta riprovare.
+- **⚙️ Opzioni** (in alto a destra): chiave API, modelli, ricerca web, porte e
+  impostazioni avanzate. Dopo **Salva**, i due programmi si riavviano da soli
+  per applicare le modifiche (se cambi la porta dell'hub, riavvia invece il
+  launcher a mano).
+
+### I due programmi
+
+| | Vedi (viewer) | Crea (creator) |
+|---|---|---|
+| **Serve a** | leggere ed esplorare le schede | creare nuove schede con l'AI |
+| **Funziona senza chiave API?** | sì, per le schede già pubblicate | no, la generazione richiede la chiave |
+| **Da solo** | mostra solo l'opera dimostrativa se non ci sono schede pubblicate | autonomo al 100% |
+
+### Flussi tipici
+
+**Leggere una scheda**: hub → *Vedi* → elenco → click sulla scheda → si apre
+l'anteprima con presentazione, dettagli cliccabili e opere simili. Il bottone
+**⬇ PDF** nella barra in alto scarica la scheda impaginata come libro d'arte.
+
+**Creare una scheda opera**: hub → *Crea* → Nuova opera → carica l'immagine →
+parte da sola la pipeline (riconoscimento → dettagli → testi → presentazione →
+opere simili) → rivedi e correggi → **Salva nel database** → la scheda diventa
+visibile nel viewer.
+
+**Se qualcosa non va**: pagina che non si apre → controlla che il terminale del
+launcher sia acceso e il pallino sia verde; porta occupata → cambia le porte in
+⚙️ Opzioni; libreria vuota nel viewer → nessuna scheda ancora pubblicata dal
+creator (vedi flusso sopra).
 
 Il modello lavora dalla propria conoscenza di addestramento: osserva il dettaglio e integra nella spiegazione i fatti che già conosce sull’opera. Il grounding web di OpenRouter è **disattivato di default**; per attivarlo impostare `OPENROUTER_WEB_SEARCH=true` (in quel caso il backend aggiunge il plugin di ricerca web alla richiesta e le citazioni restituite vengono mostrate tra le fonti).
 
