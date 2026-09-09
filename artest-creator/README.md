@@ -30,13 +30,16 @@ un clic. La sorella **artest** resta l'app di lettura/esplorazione.
 ## Avvio
 
 ```bash
+pip install pillow reportlab   # dipendenze Python una tantum (vedi sotto)
 cd artest-creator
-node server.mjs            # http://127.0.0.1:8100  (porta: ARTEST_CREATOR_PORT)
+node server.mjs            # http://127.0.0.1:18100  (porta: ARTEST_CREATOR_PORT)
 ```
 
 DB e cartella `uploads/` si creano da soli al primo avvio; sono ignorati da git
-(artefatti runtime). Il DB demo con l'Annunciazione (stato `ready`) è presente
-solo localmente.
+(artefatti runtime), quindi su un sistema nuovo la libreria parte **vuota** e va
+riempita con la pipeline (vedi "Flusso d'uso"). Il DB demo con l'Annunciazione
+(stato `ready`) è presente solo localmente. La procedura completa d'installazione
+(requisiti, chiave API, secondo server artest, verifica) è nel README alla radice.
 
 ## Flusso d'uso (una sola richiesta all'utente: l'immagine)
 

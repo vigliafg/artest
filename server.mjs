@@ -31,7 +31,7 @@ export const OPENROUTER_ENDPOINT = process.env.OPENROUTER_ENDPOINT || 'https://o
 export const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'meta/muse-spark-1.3';
 export const TEXT_MODEL = process.env.OPENROUTER_TEXT_MODEL || 'meta/muse-spark-1.3';
 export function webSearchEnabled(env = process.env) { return env.OPENROUTER_WEB_SEARCH?.trim().toLowerCase() === 'true'; }
-const PORT = Number(process.env.APP_PORT || 8000);
+const PORT = Number(process.env.APP_PORT || 18000);
 const HOST = process.env.APP_HOST || '127.0.0.1';
 const IMAGE_PATH = join(ROOT, 'annunciazione-beato-angelico.jpg');
 
@@ -358,7 +358,7 @@ async function acquireRateSlot() {
 export async function callModel(model, content, apiKey, fetchImpl = globalThis.fetch) {
   const body = { model, messages: [{ role: 'user', content }], temperature: 0.2, top_p: 0.7, max_tokens: 8000, stream: false };
   if (webSearchEnabled()) body.plugins = [{ id: 'web', max_results: 5 }];
-  const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json', 'HTTP-Referer': 'http://127.0.0.1:8000', 'X-Title': 'Leggi l Opera d Arte' };
+  const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', Accept: 'application/json', 'HTTP-Referer': 'http://127.0.0.1:18000', 'X-Title': 'Leggi l Opera d Arte' };
   let response = null;
   let lastError = null;
   for (let attempt = 0; attempt < 3; attempt++) {

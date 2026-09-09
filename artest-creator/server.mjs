@@ -26,7 +26,7 @@ import { callModel, VISION_MODEL, TEXT_MODEL, getOpenRouterApiKey,
   normalizeAnalysis, normalizeOverview, normalizeSimilar, resolveSimilarImages } from '../server.mjs';
 
 const execFileAsync = promisify(execFile);
-const PORT = Number(process.env.ARTEST_CREATOR_PORT || 8100);
+const PORT = Number(process.env.ARTEST_CREATOR_PORT || 18100);
 const HOST = process.env.APP_HOST || '127.0.0.1';
 const PUBLIC_DIR = join(APP_ROOT, 'public');
 

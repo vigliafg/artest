@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 HOST = os.getenv("APP_HOST", "127.0.0.1")
-PORT = int(os.getenv("APP_PORT", "8000"))
+PORT = int(os.getenv("APP_PORT", "18000"))
 OPENROUTER_ENDPOINT = os.getenv("OPENROUTER_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions")
 VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "meta/muse-spark-1.3")
 TEXT_MODEL = os.getenv("OPENROUTER_TEXT_MODEL", "meta/muse-spark-1.3")
@@ -157,7 +157,7 @@ def call_model(model, content, api_key):
     if web_search_enabled():
         payload["plugins"] = [{"id": "web", "max_results": 5}]
     body = json.dumps(payload).encode("utf-8")
-    request = Request(OPENROUTER_ENDPOINT, data=body, method="POST", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json", "HTTP-Referer": "http://127.0.0.1:8000", "X-Title": "Leggi l Opera d Arte"})
+    request = Request(OPENROUTER_ENDPOINT, data=body, method="POST", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Accept": "application/json", "HTTP-Referer": "http://127.0.0.1:18000", "X-Title": "Leggi l Opera d Arte"})
     try:
         with urlopen(request, timeout=60) as response:
             raw = json.loads(response.read().decode("utf-8"))

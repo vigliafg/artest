@@ -31,34 +31,87 @@ Le tabelle SQLite corrispondenti (`subjects`, `subject_chapters`, `subject_works
 
 La chiave OpenRouter **non deve mai essere inserita in `index.html`, in `src/` o in un commit**. Copiare `.env.example` in `.env.local` e impostare `OPENROUTER_API_KEY`; il server carica il file automaticamente all’avvio. La chiave serve solo al flusso legacy di generazione live (analisi/overview/opere simili on-demand) e ad artest-creator: il viewer delle schede pubblicate funziona anche senza.
 
-## Avvio locale
+## Installazione su un altro sistema
 
-La modalità raccomandata richiede Node.js 18 o superiore e non richiede pacchetti npm.
+### Requisiti
 
-### macOS / Linux / Git Bash
+| Cosa | Versione | Perché |
+|---|---|---|
+| **Node.js ≥ 22.5** | — | `node:sqlite` in `artest-creator/db.mjs`, importato da entrambi i server |
+| **Python 3** + `pip install pillow reportlab` | — | `annotate.py`/`compose_thumb.py` (Pillow), `make_pdf.py` (reportlab) |
+| Font **DejaVu** (Linux: pacchetto `fonts-dejavu`) | consigliati | senza, resa tipografica di fallback |
+
+Nessun `npm install`: zero dipendenze, niente `package.json`, niente build.
+
+### Procedura
 
 ```bash
+git clone https://github.com/vigliafg/artest.git && cd artest
+pip install pillow reportlab
 cp .env.example .env.local  # poi inserisci OPENROUTER_API_KEY nel file
-node server.mjs
 ```
 
-### Windows PowerShell
+La chiave serve solo per **generare** contenuti (pipeline di artest-creator e flussi
+legacy sotto); il viewer delle schede pubblicate funziona anche senza. Entrambi i
+server caricano `.env.local`/`.env` dalla radice da soli.
+
+### Avvio (un terminale: launcher)
+
+Il modo più semplice è il **launcher**, che avvia entrambi i programmi e presenta
+l'hub con due grossi bottoni (più ⚙️ Opzioni per chiave API, modelli e porte):
+
+```bash
+node launcher.mjs                # hub → http://127.0.0.1:18080
+```
+
+Dall'hub: **"Vedi le schede di Artest"** → viewer su :18000,
+**"Crea le schede di Artest"** → authoring su :18100. `Ctrl+C` spegne tutto.
+
+I due programmi vivono in maniera **indipendente**: artest-creator **crea** le
+schede (authoring + pipeline AI), artest le **visualizza** (viewer di lettura).
+Avvio manuale senza launcher (un terminale per server):
+
+```bash
+node server.mjs                  # artest viewer → http://127.0.0.1:18000
+node artest-creator/server.mjs   # authoring     → http://127.0.0.1:18100
+```
+
+- **Solo artest-creator**: autonomo, crea il suo DB da solo; generi e pubblichi
+  le schede.
+- **Solo viewer artest**: parte da solo, ma mostra le schede pubblicate solo se
+  esiste il DB di artest-creator (`artest-creator/data/artest-creator.db`,
+  letto in sola lettura); altrimenti vedi solo l'opera dimostrativa di ripiego
+  inclusa nel client.
+
+Porte/host sovrascrivibili senza toccare il codice (`APP_PORT`,
+`ARTEST_CREATOR_PORT`, `APP_HOST`; il DB con `ARTEST_CREATOR_DB`):
+
+```bash
+OPENROUTER_VISION_MODEL="meta/muse-spark-1.3" OPENROUTER_TEXT_MODEL="meta/muse-spark-1.3" APP_PORT=18000 node server.mjs
+```
+
+Su Windows PowerShell la chiave si passa come variabile d'ambiente:
 
 ```powershell
 $env:OPENROUTER_API_KEY="incolla-la-tua-chiave-openrouter"
 node server.mjs
 ```
 
-Aprire quindi:
+### Note
 
-```text
-http://127.0.0.1:8000
-```
+- Il DB SQLite (`artest-creator/data/`, WAL) e `uploads/` **si creano da soli** al
+  primo avvio e sono ignorati da git: sul nuovo sistema la libreria parte
+  **vuota**. Per riempirla: apri artest-creator → Nuova opera → carica
+  l'immagine → parte la pipeline automatica (riconoscimento → dettagli → tab →
+  presentazione → simili → approva). Solo le schede `ready` compaiono in artest.
+- `server.py` / `test_server.py` sono il mirror Python legacy del solo viewer:
+  il runtime primario è Node, sul nuovo sistema si possono ignorare.
 
-È possibile cambiare modello o porta senza modificare il codice:
+### Verifica
 
 ```bash
-OPENROUTER_VISION_MODEL="meta/muse-spark-1.3" OPENROUTER_TEXT_MODEL="meta/muse-spark-1.3" APP_PORT=8000 node server.mjs
+node --test test_server.mjs                  # 36 test
+curl http://127.0.0.1:18100/api/status        # configured:true se la chiave è letta
 ```
 
 Il modello lavora dalla propria conoscenza di addestramento: osserva il dettaglio e integra nella spiegazione i fatti che già conosce sull’opera. Il grounding web di OpenRouter è **disattivato di default**; per attivarlo impostare `OPENROUTER_WEB_SEARCH=true` (in quel caso il backend aggiunge il plugin di ricerca web alla richiesta e le citazioni restituite vengono mostrate tra le fonti).

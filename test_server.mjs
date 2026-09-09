@@ -629,3 +629,109 @@ test('creator PDF endpoints return application/pdf for the three card types', as
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Launcher: hub con due bottoni + supervisore + pannello Opzioni
+// ---------------------------------------------------------------------------
+import { createHubServer, validateConfig, effectiveConfig, DEFAULTS } from './launcher.mjs';
+
+test('launcher default ports avoid the crowded 80xx band', () => {
+  assert.deepEqual([DEFAULTS.hubPort, DEFAULTS.viewerPort, DEFAULTS.creatorPort], [18080, 18000, 18100]);
+});
+
+test('launcher hub serves the two big buttons with configured ports', async () => {
+  const hub = createHubServer({ hubPort: 0, spawn: false, env: { ...process.env } });
+  await new Promise(resolve => hub.server.listen(0, '127.0.0.1', resolve));
+  const port = hub.server.address().port;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.ok(html.includes('Vedi le schede di Artest'));
+    assert.ok(html.includes('Crea le schede di Artest'));
+    assert.ok(html.includes('18000'));
+    assert.ok(html.includes('18100'));
+    assert.ok(html.includes('Opzioni'));
+    const health = await (await fetch(`http://127.0.0.1:${port}/api/health`)).json();
+    assert.equal(health.viewer.port, 18000);
+    assert.equal(health.creator.port, 18100);
+    assert.equal(health.viewer.up, false); // spawn disabilitato nei test
+    assert.equal(health.creator.up, false);
+  } finally {
+    await hub.stop();
+  }
+});
+
+test('launcher planned restart does not spawn duplicate children', async () => {
+  // Regressione: il restart pianificato (POST /api/config) uccideva i figli ma
+  // il timer di respawn dell'exit handler ne rilanciava copie spurie in loop
+  // (EADDRINUSE). Con figli dummy: dopo restart, i pid cambiano una volta sola
+  // e restano stabili.
+  const dir = await mkdtemp(join(tmpdir(), 'artest-hub-kids-'));
+  try {
+    const dummy = join(dir, 'dummy.mjs');
+    await writeFile(dummy, 'setInterval(() => {}, 1000);\n');
+    const hub = createHubServer({
+      hubPort: 0, env: { ...process.env },
+      scripts: { viewer: dummy, creator: dummy }
+    });
+    await new Promise(resolve => hub.server.listen(0, '127.0.0.1', resolve));
+    try {
+      await new Promise(r => setTimeout(r, 300));
+      const pidV1 = hub.children.viewer.proc && hub.children.viewer.proc.pid;
+      const pidC1 = hub.children.creator.proc && hub.children.creator.proc.pid;
+      assert.ok(pidV1 && pidC1);
+      await hub.restart();
+      await new Promise(r => setTimeout(r, 300));
+      const pidV2 = hub.children.viewer.proc && hub.children.viewer.proc.pid;
+      const pidC2 = hub.children.creator.proc && hub.children.creator.proc.pid;
+      assert.ok(pidV2 && pidC2 && pidV2 !== pidV1 && pidC2 !== pidC1); // riavviati davvero
+      await new Promise(r => setTimeout(r, 2200)); // oltre la finestra di respawn 1.5s
+      assert.equal(hub.children.viewer.proc && hub.children.viewer.proc.pid, pidV2); // nessuna copia spuria
+      assert.equal(hub.children.creator.proc && hub.children.creator.proc.pid, pidC2);
+    } finally {
+      await hub.stop();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('launcher config roundtrips on an isolated env file without leaking the key', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'artest-hub-'));
+  const envFile = join(dir, '.env.local');
+  const previous = process.env.ARTEST_HUB_ENV_FILE;
+  try {
+    await writeFile(envFile, 'UNRELATED_KEEPME=1\nOPENROUTER_API_KEY=old\n');
+    const hub = createHubServer({ hubPort: 0, spawn: false, env: { ...process.env }, envFile });
+    await new Promise(resolve => hub.server.listen(0, '127.0.0.1', resolve));
+    const port = hub.server.address().port;
+    try {
+      const bad = await fetch(`http://127.0.0.1:${port}/api/config`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ viewerPort: 80, creatorPort: 80 })
+      });
+      assert.equal(bad.status, 400);
+      const okRes = await fetch(`http://127.0.0.1:${port}/api/config`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: 'test-key-xyz', visionModel: 'm-test', viewerPort: 18000, webSearch: true })
+      });
+      assert.equal(okRes.status, 200);
+      const fileText = await readFile(envFile, 'utf8');
+      assert.ok(fileText.includes('OPENROUTER_API_KEY=test-key-xyz'));
+      assert.ok(fileText.includes('UNRELATED_KEEPME=1')); // righe sconosciute preservate
+      assert.ok(!fileText.includes('OPENROUTER_API_KEY=old'));
+      const cfg = await (await fetch(`http://127.0.0.1:${port}/api/config`)).json();
+      assert.equal(cfg.apiKeyConfigured, true);
+      assert.equal(cfg.visionModel, 'm-test');
+      assert.ok(!JSON.stringify(cfg).includes('test-key-xyz')); // la chiave non viene mai riecheggiata
+      assert.equal(validateConfig({ viewerPort: 'x' }).length > 0, true);
+      assert.equal(effectiveConfig({}).viewerPort, 18000);
+    } finally {
+      await hub.stop();
+    }
+  } finally {
+    if (previous === undefined) delete process.env.ARTEST_HUB_ENV_FILE; else process.env.ARTEST_HUB_ENV_FILE = previous;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
